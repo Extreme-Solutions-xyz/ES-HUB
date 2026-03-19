@@ -41,7 +41,7 @@ local CONFIG = {
 local GAMES = {
     [2753915549] = {
         name      = "Blox Fruits",
-        scriptURL = "https://raw.githubusercontent.com/ItsYaBoySpooks/ExtremeSolutionsKeySystem/main/BloxFruitsHub.lua",
+        scriptURL = "https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/BloxFruitsHub.lua",
     },
     --[[  Template for adding more games:
     [PLACE_ID_HERE] = {
@@ -84,30 +84,35 @@ local function getHWID()
     return tostring(game:GetService("Players").LocalPlayer.UserId)
 end
 
+-- Executor-compatible HTTP request (works across Synapse, KRNL, Fluxus, etc.)
+local httpRequest = (syn and syn.request) or (http and http.request) or request or http_request
+
 local function validateKey(key)
     -- 1. Check offline whitelist first (instant, no HTTP)
     if isOfflineKey(key) then
         return true, "Key accepted (offline)."
     end
 
+    if not httpRequest then
+        return false, "Your executor does not support HTTP requests."
+    end
+
     -- 2. POST /api/validate  { key, hwid }
-    --    Matches your server.js endpoint exactly.
     local body = HttpService:JSONEncode({ key = key, hwid = getHWID() })
 
     local ok, result = pcall(function()
-        return HttpService:RequestAsync({
-            Url    = CONFIG.APIBaseURL .. "/api/validate",
-            Method = "POST",
+        return httpRequest({
+            Url     = CONFIG.APIBaseURL .. "/api/validate",
+            Method  = "POST",
             Headers = { ["Content-Type"] = "application/json" },
-            Body   = body,
+            Body    = body,
         })
     end)
 
-    if not ok then
+    if not ok or not result then
         return false, "Could not reach validation server.\nCheck your connection."
     end
 
-    -- result.Body contains the JSON string from your server
     local parsed, data = pcall(function()
         return HttpService:JSONDecode(result.Body)
     end)
