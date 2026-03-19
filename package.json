@@ -1,0 +1,18 @@
+{
+  "name": "extreme-solutions-keysystem",
+  "version": "1.0.0",
+  "description": "Key system API for Extreme Solutions Script Hub",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "rate-limiter-flexible": "^5.0.3"
+  }
+}

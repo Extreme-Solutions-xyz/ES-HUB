@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extreme Solutions — Key System Admin</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;600;700;800&display=swap');
+
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-card: #16161f;
+      --bg-card-hover: #1c1c28;
+      --border: #2a2a3a;
+      --border-bright: #3a3a50;
+      --text-primary: #e8e8f0;
+      --text-secondary: #8888a0;
+      --text-muted: #55556a;
+      --accent: #7c5cff;
+      --accent-glow: rgba(124, 92, 255, 0.3);
+      --green: #3dd68c;
+      --green-bg: rgba(61, 214, 140, 0.1);
+      --red: #ff5c6c;
+      --red-bg: rgba(255, 92, 108, 0.1);
+      --yellow: #ffc44d;
+      --yellow-bg: rgba(255, 196, 77, 0.1);
+      --blue: #4dacff;
+      --blue-bg: rgba(77, 172, 255, 0.1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Scanline overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(
+        transparent, transparent 2px,
+        rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo-mark {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, var(--accent), #a855f7);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      color: white;
+      letter-spacing: -1px;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .header h1 span {
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: 8px;
+    }
+
+    .api-key-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .api-key-input label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .api-key-input input {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      width: 260px;
+      transition: border-color 0.2s;
+    }
+
+    .api-key-input input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    /* ── Main Layout ── */
+    .main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px;
+    }
+
+    /* ── Stats Grid ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      transition: all 0.2s;
+    }
+
+    .stat-card:hover {
+      border-color: var(--border-bright);
+      background: var(--bg-card-hover);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat-card.total .stat-value { color: var(--text-primary); }
+    .stat-card.unused .stat-value { color: var(--blue); }
+    .stat-card.active .stat-value { color: var(--green); }
+    .stat-card.expired .stat-value { color: var(--yellow); }
+    .stat-card.revoked .stat-value { color: var(--red); }
+
+    /* ── Panels ── */
+    .panels {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 24px;
+    }
+
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-header .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .panel-body {
+      padding: 20px;
+    }
+
+    /* ── Generate Form ── */
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .form-group select,
+    .form-group input[type="number"],
+    .form-group input[type="text"] {
+      width: 100%;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-family: 'Outfit', sans-serif;
+      font-size: 14px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      transition: border-color 0.2s;
+    }
+
+    .form-group select:focus,
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .form-group select { cursor: pointer; }
+    .form-group select option { background: var(--bg-secondary); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 10px;
+      border: none;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #9b6cff);
+      color: white;
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px var(--accent-glow);
+    }
+
+    .btn-primary:active { transform: translateY(0); }
+
+    .btn-danger {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid rgba(255, 92, 108, 0.2);
+    }
+
+    .btn-danger:hover { background: rgba(255, 92, 108, 0.15); }
+
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 12px;
+      width: auto;
+      border-radius: 6px;
+    }
+
+    /* ── Output area ── */
+    .output-area {
+      margin-top: 18px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: none;
+    }
+
+    .output-area.visible { display: block; }
+
+    .output-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .output-header span {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .output-keys {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--green);
+      max-height: 280px;
+      overflow-y: auto;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .output-keys::-webkit-scrollbar { width: 6px; }
+    .output-keys::-webkit-scrollbar-track { background: transparent; }
+    .output-keys::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Keys Table ── */
+    .table-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .table-controls select,
+    .table-controls input {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+
+    .table-controls select:focus,
+    .table-controls input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .table-controls input { flex: 1; min-width: 160px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 12px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(42, 42, 58, 0.5);
+    }
+
+    tr:hover td { background: rgba(124, 92, 255, 0.03); }
+
+    .key-mono {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--blue);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .badge-unused { background: var(--blue-bg); color: var(--blue); }
+    .badge-active { background: var(--green-bg); color: var(--green); }
+    .badge-expired { background: var(--yellow-bg); color: var(--yellow); }
+    .badge-revoked { background: var(--red-bg); color: var(--red); }
+
+    .badge-tier {
+      background: rgba(124, 92, 255, 0.1);
+      color: var(--accent);
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .pagination button {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 6px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Outfit', sans-serif;
+      font-size: 12px;
+    }
+
+    .pagination button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .pagination button:not(:disabled):hover {
+      border-color: var(--accent);
+    }
+
+    /* ── Toast ── */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-size: 13px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+      animation: slideIn 0.3s ease;
+      min-width: 260px;
+    }
+
+    .toast.success { border-left: 3px solid var(--green); }
+    .toast.error { border-left: 3px solid var(--red); }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+      .panels { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 600px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .header { padding: 16px; flex-direction: column; gap: 12px; }
+      .main { padding: 16px; }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+<div class="toast-container" id="toasts"></div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo-mark">ES</div>
+    <h1>Key System<span>Admin</span></h1>
+  </div>
+  <div class="api-key-input">
+    <label>API Key</label>
+    <input type="password" id="apiKeyInput" placeholder="Enter admin API key" />
+  </div>
+</div>
+
+<div class="main">
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card total">
+      <div class="stat-label">Total Keys</div>
+      <div class="stat-value" id="statTotal">—</div>
+    </div>
+    <div class="stat-card unused">
+      <div class="stat-label">Unused</div>
+      <div class="stat-value" id="statUnused">—</div>
+    </div>
+    <div class="stat-card active">
+      <div class="stat-label">Active</div>
+      <div class="stat-value" id="statActive">—</div>
+    </div>
+    <div class="stat-card expired">
+      <div class="stat-label">Expired</div>
+      <div class="stat-value" id="statExpired">—</div>
+    </div>
+    <div class="stat-card revoked">
+      <div class="stat-label">Revoked</div>
+      <div class="stat-value" id="statRevoked">—</div>
+    </div>
+  </div>
+
+  <div class="panels">
+    <!-- Generate Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="dot"></div>
+        Generate Keys
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label>Tier</label>
+          <select id="genTier">
+            <option value="1day">1 Day</option>
+            <option value="3day">3 Day</option>
+            <option value="1month">1 Month</option>
+            <option value="lifetime">Lifetime</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Quantity</label>
+          <input type="number" id="genCount" min="1" max="500" value="10" />
+        </div>
+        <div class="form-group">
+          <label>Note (optional)</label>
+          <input type="text" id="genNote" placeholder="e.g. March restock" />
+        </div>
+        <button class="btn btn-primary" onclick="generateKeys()">Generate Keys</button>
+
+        <div class="output-area" id="outputArea">
+          <div class="output-header">
+            <span id="outputLabel">Generated Keys</span>
+            <button class="btn btn-sm btn-primary" onclick="copyKeys()">Copy All</button>
+          </div>
+          <div class="output-keys" id="outputKeys"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keys Table Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="dot"></div>
+        All Keys
+      </div>
+      <div class="panel-body">
+        <div class="table-controls">
+          <select id="filterStatus" onchange="loadKeys()">
+            <option value="">All Status</option>
+            <option value="unused">Unused</option>
+            <option value="active">Active</option>
+            <option value="expired">Expired</option>
+            <option value="revoked">Revoked</option>
+          </select>
+          <select id="filterTier" onchange="loadKeys()">
+            <option value="">All Tiers</option>
+            <option value="1day">1 Day</option>
+            <option value="3day">3 Day</option>
+            <option value="1month">1 Month</option>
+            <option value="lifetime">Lifetime</option>
+          </select>
+          <input type="text" id="searchInput" placeholder="Search key..." oninput="debounceSearch()" />
+        </div>
+
+        <div id="keysTableContainer">
+          <div class="empty-state">Enter your API key above to get started.</div>
+        </div>
+
+        <div class="pagination" id="pagination" style="display:none;">
+          <button onclick="changePage(-1)" id="prevBtn">← Prev</button>
+          <span id="pageInfo"></span>
+          <button onclick="changePage(1)" id="nextBtn">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentPage = 1;
+  const pageSize = 30;
+  let totalPages = 1;
+  let searchTimeout;
+
+  function getApiKey() {
+    return document.getElementById('apiKeyInput').value.trim();
+  }
+
+  function getBaseUrl() {
+    return window.location.origin;
+  }
+
+  async function apiCall(method, endpoint, body = null) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      toast('Enter your admin API key first.', 'error');
+      return null;
+    }
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }
+    };
+    if (body) opts.body = JSON.stringify(body);
+
+    const res = await fetch(`${getBaseUrl()}${endpoint}`, opts);
+    const data = await res.json();
+    if (!data.success) {
+      toast(data.error || 'Request failed.', 'error');
+      return null;
+    }
+    return data;
+  }
+
+  // ── Stats ──
+  async function loadStats() {
+    const data = await apiCall('GET', '/api/admin/stats');
+    if (!data) return;
+    const s = data.stats;
+    document.getElementById('statTotal').textContent = s.total;
+    document.getElementById('statUnused').textContent = s.unused;
+    document.getElementById('statActive').textContent = s.active;
+    document.getElementById('statExpired').textContent = s.expired;
+    document.getElementById('statRevoked').textContent = s.revoked;
+  }
+
+  // ── Generate ──
+  async function generateKeys() {
+    const tier = document.getElementById('genTier').value;
+    const count = parseInt(document.getElementById('genCount').value);
+    const note = document.getElementById('genNote').value.trim();
+
+    const data = await apiCall('POST', '/api/admin/generate', { tier, count, note: note || undefined });
+    if (!data) return;
+
+    const output = document.getElementById('outputArea');
+    const keysDiv = document.getElementById('outputKeys');
+    const label = document.getElementById('outputLabel');
+
+    keysDiv.textContent = data.keys.join('\n');
+    label.textContent = `${data.count} × ${tier} keys`;
+    output.classList.add('visible');
+
+    toast(`Generated ${data.count} ${tier} keys!`, 'success');
+    loadStats();
+    loadKeys();
+  }
+
+  function copyKeys() {
+    const text = document.getElementById('outputKeys').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      toast('Keys copied to clipboard!', 'success');
+    });
+  }
+
+  // ── Keys Table ──
+  async function loadKeys() {
+    const status = document.getElementById('filterStatus').value;
+    const tier = document.getElementById('filterTier').value;
+    const search = document.getElementById('searchInput').value.trim();
+
+    let params = `?page=${currentPage}&limit=${pageSize}`;
+    if (status) params += `&status=${status}`;
+    if (tier) params += `&tier=${tier}`;
+    if (search) params += `&search=${encodeURIComponent(search)}`;
+
+    const data = await apiCall('GET', `/api/admin/keys${params}`);
+    if (!data) return;
+
+    const container = document.getElementById('keysTableContainer');
+    const pag = data.pagination;
+    totalPages = pag.pages;
+
+    if (data.keys.length === 0) {
+      container.innerHTML = '<div class="empty-state">No keys found.</div>';
+      document.getElementById('pagination').style.display = 'none';
+      return;
+    }
+
+    let html = `<table>
+      <thead><tr>
+        <th>Key</th><th>Tier</th><th>Status</th><th>Expires</th><th>Actions</th>
+      </tr></thead><tbody>`;
+
+    for (const k of data.keys) {
+      const expires = k.expires_at ? new Date(k.expires_at).toLocaleDateString() : (k.tier === 'lifetime' ? '∞ Never' : '—');
+      html += `<tr>
+        <td class="key-mono">${k.key}</td>
+        <td><span class="badge badge-tier">${k.tier}</span></td>
+        <td><span class="badge badge-${k.status}">${k.status}</span></td>
+        <td style="color: var(--text-secondary); font-size: 12px;">${expires}</td>
+        <td>
+          ${k.status === 'active' || k.status === 'unused' ? `<button class="btn btn-sm btn-danger" onclick="revokeKey('${k.key}')">Revoke</button>` : ''}
+        </td>
+      </tr>`;
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    document.getElementById('pagination').style.display = 'flex';
+    document.getElementById('pageInfo').textContent = `Page ${pag.page} of ${pag.pages} (${pag.total} keys)`;
+    document.getElementById('prevBtn').disabled = pag.page <= 1;
+    document.getElementById('nextBtn').disabled = pag.page >= pag.pages;
+  }
+
+  function changePage(dir) {
+    currentPage += dir;
+    if (currentPage < 1) currentPage = 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    loadKeys();
+  }
+
+  function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      currentPage = 1;
+      loadKeys();
+    }, 400);
+  }
+
+  async function revokeKey(key) {
+    if (!confirm(`Revoke key ${key}?`)) return;
+    const data = await apiCall('POST', '/api/admin/revoke', { key });
+    if (data) {
+      toast('Key revoked.', 'success');
+      loadStats();
+      loadKeys();
+    }
+  }
+
+  // ── Toast ──
+  function toast(msg, type = 'success') {
+    const container = document.getElementById('toasts');
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+
+  // ── Init: load on API key entry ──
+  document.getElementById('apiKeyInput').addEventListener('change', () => {
+    loadStats();
+    loadKeys();
+  });
+
+  document.getElementById('apiKeyInput').addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') {
+      loadStats();
+      loadKeys();
+    }
+  });
+</script>
+</body>
+</html>
