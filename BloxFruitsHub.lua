@@ -12,21 +12,21 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
     Name                  = "Extreme Solutions | Blox Fruits",
-    Icon                  = 0,
-    LoadingTitle          = "Extreme Solutions",
-    LoadingSubtitle       = "Blox Fruits Edition v3 — By Tzqy",
-    Theme                 = "Default",
+    Icon                  = "sword",
+    LoadingTitle          = "Extreme Solutions Hub",
+    LoadingSubtitle       = "Blox Fruits  ·  Loading...",
+    Theme                 = "DarkBlue",
     ToggleUIKeybind       = "K",
-    DisableRayfieldPrompts = false,
-    DisableBuildWarnings  = false,
+    DisableRayfieldPrompts = true,
+    DisableBuildWarnings  = true,
     ConfigurationSaving = {
         Enabled    = true,
         FolderName = "ExtremeSolutions",
         FileName   = "BloxFruitsHub"
     },
     Discord = {
-        Enabled      = false,
-        Invite       = "noinvitelink",
+        Enabled      = true,
+        Invite       = "yourserver",    -- replace with your actual Discord invite code
         RememberJoins = true
     },
     KeySystem = false,
@@ -42,7 +42,6 @@ local UserInputService = game:GetService("UserInputService")
 local TeleportService  = game:GetService("TeleportService")
 local Workspace        = game:GetService("Workspace")
 local HttpService      = game:GetService("HttpService")
-local TweenService     = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
@@ -51,12 +50,12 @@ local camera = Workspace.CurrentCamera
 --  TABS
 -- ══════════════════════════════════════════════════════
 
-local PlayerTab   = Window:CreateTab("Player")
-local FarmTab     = Window:CreateTab("Auto Farm")
-local TeleportTab = Window:CreateTab("Teleport")
-local FruitTab    = Window:CreateTab("Fruit ESP")
-local VisualTab   = Window:CreateTab("Visuals")
-local MiscTab     = Window:CreateTab("Misc")
+local PlayerTab   = Window:CreateTab("Player",    "user")
+local FarmTab     = Window:CreateTab("Auto Farm", "swords")
+local TeleportTab = Window:CreateTab("Teleport",  "map-pin")
+local FruitTab    = Window:CreateTab("ESP",        "eye")
+local VisualTab   = Window:CreateTab("Visuals",   "palette")
+local MiscTab     = Window:CreateTab("Misc",       "settings")
 
 -- ══════════════════════════════════════════════════════
 --  GLOBAL STATE
@@ -291,11 +290,21 @@ end
 -- 3. Are NOT inside a known gacha/shop container
 
 local FRUIT_KEYWORDS = {
-    "fruit","devil","kilo","gum","smoke","spike","flame",
-    "ice","door","dark","light","sand","magma","quake",
-    "buddha","love","spider","phoenix","rumble","paw",
-    "gravity","venom","control","spirit","dragon","leopard",
-    "kitsune","mythical","legendary","rare","uncommon","common"
+    -- Generic
+    "fruit","devil fruit",
+    -- Common / Uncommon
+    "kilo","bomb","spike","spring","chop",
+    -- Rare
+    "smoke","flame","ice","sand","dark","diamond","light",
+    "rubber","barrier","magma","quake","door","gravity",
+    -- Legendary
+    "buddha","love","spider","sound","phoenix","blizzard",
+    "rumble","paw","revive","venom","control","spirit",
+    -- Mythical
+    "dragon","leopard","kitsune","dough","shadow","mammoth",
+    "t-rex","gas","portal","ope","venom","soul",
+    -- Rarity tags (some servers label fruits this way)
+    "mythical","legendary","rare","uncommon","common",
 }
 
 local function isFruitName(name)
@@ -698,11 +707,23 @@ PlayerTab:CreateSlider({
 FarmTab:CreateSection("Enemy Auto Farm")
 
 local enemyOptions = {
+    -- First Sea
     "Bandits","Monkeys","Pirates","Marines",
     "Desert Bandits","Snow Bandits","Skylands Guards",
     "Prisoners","Gladiators","Magma Ninjas",
     "Fishmen","Raiders","Zombies","Vampires",
-    "Snow Troops","Dragon Crew","Pirate Millionaires"
+    "Snow Troops","Dragon Crew","Pirate Millionaires",
+    "Rip Indra's Crew",
+    -- Second Sea
+    "Galley Pirates","Jungle Pirates","Forest Pirates",
+    "Laboratory Subordinates","Penguins","Snow Demons",
+    "Reef Pirates","Ship Engineers","Arctic Warriors",
+    "Ice Cream Zombie","Cake Sea Bandits","Bon Clays",
+    -- Third Sea
+    "Ability Teachers","Longma's Crew","Wandering Pirates",
+    "Yakuza","Cyborg Pirates","Eye Pirates",
+    "Magma Pirates","Crystal Pirates","Tiki Outpost Pirates",
+    "Wereravens","Cake Guards","Leviathan Pirates"
 }
 
 FarmTab:CreateDropdown({
@@ -793,12 +814,20 @@ FarmTab:CreateToggle({
 FarmTab:CreateSection("Boss Farm")
 
 local bossOptions = {
+    -- First Sea
     "Gorilla King","Bobby","Yeti","Vice Admiral","Greybeard",
     "Thunder God","Chief Warden","Swan","Magma Admiral",
     "Fishman Lord","Cyborg","Diamond","Jeremy","Fajita",
     "Darkbeard","Smoke Admiral","Ice Admiral","Tide Keeper",
-    "Stone","Island Empress","Kilo Admiral","Captain Elephant",
-    "Soul Reaper","Cake Prince"
+    "Stone","Rip Indra",
+    -- Second Sea
+    "Island Empress","Kilo Admiral","Captain Elephant",
+    "Soul Reaper","Cake Prince","Cursed Captain",
+    "Awakened Ice Admiral","Dough King",
+    -- Third Sea
+    "Longma","Cake Queen","Golden Gladiator",
+    "The Shark","Wandering Pirate","Leviathan",
+    "Order","Bartilo","Chinjao","Don Swan"
 }
 
 FarmTab:CreateDropdown({
@@ -838,44 +867,48 @@ FarmTab:CreateToggle({
 -- ══════════════════════════════════════════════════════
 
 local islands = {
-    -- First Sea
-    ["Starter Island"]   = CFrame.new(-1324, 4, -57),
-    ["Jungle"]           = CFrame.new(1513, 126, 1754),
-    ["Pirate Village"]   = CFrame.new(-1000, 15, 1000),
-    ["Desert"]           = CFrame.new(936, 15, 4139),
-    ["Middle Town"]      = CFrame.new(314, 15, 553),
-    ["Frozen Village"]   = CFrame.new(1356, 15, -3218),
-    ["Marine Fortress"]  = CFrame.new(-3460, 15, -570),
-    ["Skylands"]         = CFrame.new(-5033, 425, -2600),
-    ["Prison"]           = CFrame.new(4839, 15, 700),
-    ["Colosseum"]        = CFrame.new(-2890, 8, 3441),
-    ["Magma Village"]    = CFrame.new(3118, 167, -479),
-    ["Underwater City"]  = CFrame.new(-3000, -75, -3000),
-    ["Fountain City"]    = CFrame.new(3767, 60, 3882),
-    -- Second Sea
-    ["Kingdom of Rose"]  = CFrame.new(-248, 15, -3049),
-    ["Green Zone"]       = CFrame.new(4310, 15, -3849),
-    ["Graveyard"]        = CFrame.new(-4474, 8, -3540),
-    ["Snow Mountain"]    = CFrame.new(-1478, 165, -6306),
-    ["Hot and Cold"]     = CFrame.new(-5025, 15, -6300),
-    ["Cursed Ship"]      = CFrame.new(-5000, 5, -4000),
-    ["Ice Castle"]       = CFrame.new(-4540, 15, -8000),
-    ["Forgotten Island"] = CFrame.new(2580, 8, -7000),
-    ["Dark Arena"]       = CFrame.new(6000, 8, -3060),
-    -- Third Sea
-    ["Port Town"]        = CFrame.new(-5755, 15, -895),
-    ["Hydra Island"]     = CFrame.new(-4370, 15, 4310),
-    ["Great Tree"]       = CFrame.new(-8050, 75, -540),
-    ["Floating Turtle"]  = CFrame.new(-12245, 305, -1500),
-    ["Castle on Sea"]    = CFrame.new(-9000, 15, 3500),
-    ["Haunted Castle"]   = CFrame.new(-14500, 8, 3900),
-    ["Sea of Treats"]    = CFrame.new(-5500, 15, 8000),
-    ["Tiki Outpost"]     = CFrame.new(-10000, 15, 6500),
+    -- ── First Sea ──────────────────────────────────────
+    ["Starter Island"]    = CFrame.new(-1324,  4,   -57),
+    ["Middle Town"]       = CFrame.new(  314, 15,   553),
+    ["Jungle"]            = CFrame.new( 1513,126,  1754),
+    ["Pirate Village"]    = CFrame.new(-1000, 15,  1000),
+    ["Desert"]            = CFrame.new(  936, 15,  4139),
+    ["Frozen Village"]    = CFrame.new( 1356, 15, -3218),
+    ["Marine Fortress"]   = CFrame.new(-3460, 15,  -570),
+    ["Skylands"]          = CFrame.new(-5033,425, -2600),
+    ["Prison"]            = CFrame.new( 4839, 15,   700),
+    ["Colosseum"]         = CFrame.new(-2890,  8,  3441),
+    ["Magma Village"]     = CFrame.new( 3118,167,  -479),
+    ["Underwater City"]   = CFrame.new(-3000,-75, -3000),
+    ["Fountain City"]     = CFrame.new( 3767, 60,  3882),
+    -- ── Second Sea ─────────────────────────────────────
+    ["Kingdom of Rose"]   = CFrame.new( -248, 15, -3049),
+    ["Café"]              = CFrame.new( -630, 75, -3250),
+    ["Green Zone"]        = CFrame.new( 4310, 15, -3849),
+    ["Graveyard"]         = CFrame.new(-4474,  8, -3540),
+    ["Snow Mountain"]     = CFrame.new(-1478,165, -6306),
+    ["Hot and Cold"]      = CFrame.new(-5025, 15, -6300),
+    ["Cursed Ship"]       = CFrame.new(-5000,  5, -4000),
+    ["Ice Castle"]        = CFrame.new(-4540, 15, -8000),
+    ["Forgotten Island"]  = CFrame.new( 2580,  8, -7000),
+    ["Dark Arena"]        = CFrame.new( 6000,  8, -3060),
+    ["Mansion"]           = CFrame.new(  490, 95, -3050),
+    -- ── Third Sea ──────────────────────────────────────
+    ["Port Town"]         = CFrame.new(-5755, 15,  -895),
+    ["Hydra Island"]      = CFrame.new(-4370, 15,  4310),
+    ["Great Tree"]        = CFrame.new(-8050, 75,  -540),
+    ["Floating Turtle"]   = CFrame.new(-12245,305, -1500),
+    ["Castle on Sea"]     = CFrame.new(-9000, 15,  3500),
+    ["Haunted Castle"]    = CFrame.new(-14500, 8,  3900),
+    ["Sea of Treats"]     = CFrame.new(-5500, 15,  8000),
+    ["Tiki Outpost"]      = CFrame.new(-10000,15,  6500),
+    ["Mirage Island"]     = CFrame.new(-14900,15,  -350),
+    ["Longma Island"]     = CFrame.new(-8790, 20,  2760),
 }
 
 TeleportTab:CreateSection("First Sea")
 for _, name in ipairs({
-    "Starter Island","Jungle","Pirate Village","Desert","Middle Town",
+    "Starter Island","Middle Town","Jungle","Pirate Village","Desert",
     "Frozen Village","Marine Fortress","Skylands","Prison","Colosseum",
     "Magma Village","Underwater City","Fountain City"
 }) do
@@ -894,8 +927,9 @@ end
 
 TeleportTab:CreateSection("Second Sea")
 for _, name in ipairs({
-    "Kingdom of Rose","Green Zone","Graveyard","Snow Mountain",
-    "Hot and Cold","Cursed Ship","Ice Castle","Forgotten Island","Dark Arena"
+    "Kingdom of Rose","Café","Mansion","Green Zone","Graveyard",
+    "Snow Mountain","Hot and Cold","Cursed Ship","Ice Castle",
+    "Forgotten Island","Dark Arena"
 }) do
     local n = name
     TeleportTab:CreateButton({
@@ -913,7 +947,8 @@ end
 TeleportTab:CreateSection("Third Sea")
 for _, name in ipairs({
     "Port Town","Hydra Island","Great Tree","Floating Turtle",
-    "Castle on Sea","Haunted Castle","Sea of Treats","Tiki Outpost"
+    "Castle on Sea","Haunted Castle","Sea of Treats","Tiki Outpost",
+    "Mirage Island","Longma Island"
 }) do
     local n = name
     TeleportTab:CreateButton({
@@ -981,7 +1016,7 @@ TeleportTab:CreateButton({
 --  FRUIT ESP TAB
 -- ══════════════════════════════════════════════════════
 
-FruitTab:CreateSection("Devil Fruit ESP")
+FruitTab:CreateSection("Wild Fruit ESP")
 
 FruitTab:CreateToggle({
     Name         = "Wild Fruit ESP",
@@ -1298,23 +1333,28 @@ VisualTab:CreateButton({
 --  MISC TAB
 -- ══════════════════════════════════════════════════════
 
-MiscTab:CreateSection("ESP Customisation")
+MiscTab:CreateSection("ESP Customization")
 
 -- Color pickers via dropdown (Rayfield doesn't have colorpicker natively
 -- on all versions, so we use a dropdown of named colours)
 local colorNames = {
-    "Red","Orange","Yellow","Green","Cyan","Blue","Purple","Pink","White"
+    "Red","Orange","Yellow","Lime","Green","Teal",
+    "Cyan","Blue","Purple","Pink","Rose","White","Grey"
 }
 local colorMap = {
-    Red    = Color3.fromRGB(255,80,80),
-    Orange = Color3.fromRGB(255,165,0),
-    Yellow = Color3.fromRGB(255,230,50),
-    Green  = Color3.fromRGB(80,255,120),
-    Cyan   = Color3.fromRGB(80,200,255),
-    Blue   = Color3.fromRGB(80,80,255),
-    Purple = Color3.fromRGB(180,80,255),
+    Red    = Color3.fromRGB(255, 70, 70),
+    Orange = Color3.fromRGB(255,165,  0),
+    Yellow = Color3.fromRGB(255,225, 50),
+    Lime   = Color3.fromRGB(130,255, 60),
+    Green  = Color3.fromRGB( 60,200, 90),
+    Teal   = Color3.fromRGB( 50,200,180),
+    Cyan   = Color3.fromRGB( 80,200,255),
+    Blue   = Color3.fromRGB( 60,100,255),
+    Purple = Color3.fromRGB(170, 80,255),
     Pink   = Color3.fromRGB(255,120,200),
+    Rose   = Color3.fromRGB(255, 80,130),
     White  = Color3.fromRGB(255,255,255),
+    Grey   = Color3.fromRGB(160,160,160),
 }
 
 MiscTab:CreateDropdown({
@@ -1490,8 +1530,8 @@ MiscTab:CreateToggle({
 MiscTab:CreateSection("Credits")
 
 MiscTab:CreateParagraph({
-    Title   = "Extreme Solutions — Blox Fruits v3",
-    Content = "Script by Tzqy  |  UI: Rayfield\n\nToggle UI: K\n\nv3 Changes:\n- Farm uses BodyVelocity fly (no teleport)\n- Speed enforced every Heartbeat frame\n- Teleport anchors with configurable lock time\n- Fruit ESP + Auto Collect filter wild fruits only\n- Gacha / Shop fruits are blacklisted\n- Clean rounded ESP labels\n- Full ESP customisation in Misc tab"
+    Title   = "Extreme Solutions  ·  Blox Fruits Hub",
+    Content = "Developed by Extreme Solutions\nUI powered by Rayfield\n\nToggle Menu: K\n\n── Features ──\n• Player: Speed · Jump · Inf Jump · No Clip · God Mode · Anti-KB\n• Farm: Auto Farm · Boss Farm · Mastery Farm (fly locomotion)\n• Teleport: All 3 seas + Café · Mansion · Mirage Island\n• ESP: Fruit · Player · Chest  (fully customisable)\n• Visuals: Full Bright · Time of Day · FOV · Zoom · Character hide\n• Misc: Server hop · Anti-AFK · Clipboard tools\n\nJoin our Discord for updates and support."
 })
 
 -- ══════════════════════════════════════════════════════
@@ -1530,4 +1570,4 @@ end
 
 Rayfield:LoadConfiguration()
 
-notify("Extreme Solutions", "Blox Fruits Hub v3 loaded! Press K to toggle UI.", 4483362458)
+notify("Extreme Solutions", "Blox Fruits Hub loaded!  Press K to toggle the menu.", 4483362458)
