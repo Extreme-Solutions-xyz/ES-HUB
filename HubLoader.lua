@@ -25,7 +25,7 @@ local CONFIG = {
     StoreURL = "https://extremesolutions.xyz",
 
     -- Discord invite shown in the GUI
-    DiscordURL = "https://discord.gg/yourserver",
+    DiscordURL = "https://discord.gg/extreme",
 
     -- Hub version shown in the GUI
     Version = "v1.0",
