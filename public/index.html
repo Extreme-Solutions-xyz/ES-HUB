@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extreme Solutions — Key System API</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;600;700;800&display=swap');
+
+    :root {
+      --bg: #0a0a0f;
+      --bg2: #12121a;
+      --border: #2a2a3a;
+      --text: #e8e8f0;
+      --muted: #55556a;
+      --accent: #7c5cff;
+      --accent-glow: rgba(124, 92, 255, 0.25);
+      --green: #3dd68c;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .glow-orb {
+      position: fixed;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+      top: -150px;
+      right: -100px;
+      pointer-events: none;
+      animation: drift 8s ease-in-out infinite alternate;
+    }
+
+    .glow-orb-2 {
+      position: fixed;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(61, 214, 140, 0.1) 0%, transparent 70%);
+      bottom: -100px;
+      left: -100px;
+      pointer-events: none;
+      animation: drift 10s ease-in-out infinite alternate-reverse;
+    }
+
+    @keyframes drift {
+      from { transform: translate(0, 0); }
+      to { transform: translate(30px, 20px); }
+    }
+
+    .container {
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      max-width: 480px;
+      padding: 20px;
+    }
+
+    .logo-mark {
+      width: 72px;
+      height: 72px;
+      background: linear-gradient(135deg, var(--accent), #a855f7);
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 28px;
+      color: white;
+      letter-spacing: -1px;
+      margin-bottom: 28px;
+      box-shadow: 0 8px 40px var(--accent-glow);
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      margin-bottom: 36px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(61, 214, 140, 0.08);
+      border: 1px solid rgba(61, 214, 140, 0.2);
+      padding: 8px 18px;
+      border-radius: 100px;
+      font-size: 13px;
+      color: var(--green);
+      margin-bottom: 36px;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .links {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .link-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      text-decoration: none;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+
+    .link-card:hover {
+      border-color: var(--accent);
+      background: rgba(124, 92, 255, 0.05);
+      transform: translateY(-1px);
+    }
+
+    .link-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .link-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .link-icon.admin { background: rgba(124, 92, 255, 0.12); }
+    .link-icon.api { background: rgba(77, 172, 255, 0.12); }
+    .link-icon.store { background: rgba(61, 214, 140, 0.12); }
+
+    .link-title {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .link-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .arrow {
+      color: var(--muted);
+      font-size: 18px;
+      transition: transform 0.2s;
+    }
+
+    .link-card:hover .arrow {
+      transform: translateX(3px);
+      color: var(--accent);
+    }
+
+    .endpoint {
+      margin-top: 36px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      text-align: left;
+    }
+
+    .endpoint span { color: var(--green); }
+  </style>
+</head>
+<body>
+
+<div class="glow-orb"></div>
+<div class="glow-orb-2"></div>
+
+<div class="container">
+  <div class="logo-mark">ES</div>
+  <h1>Extreme Solutions</h1>
+  <p class="subtitle">Key System API</p>
+
+  <div class="status-badge">
+    <div class="status-dot"></div>
+    System Online
+  </div>
+
+  <div class="links">
+    <a href="/admin" class="link-card">
+      <div class="link-left">
+        <div class="link-icon admin">🔑</div>
+        <div>
+          <div class="link-title">Admin Dashboard</div>
+          <div class="link-desc">Generate keys, view stats, manage access</div>
+        </div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <a href="https://extremesolutions.xyz" class="link-card" target="_blank">
+      <div class="link-left">
+        <div class="link-icon store">🛒</div>
+        <div>
+          <div class="link-title">Store</div>
+          <div class="link-desc">extremesolutions.xyz</div>
+        </div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+  </div>
+
+  <div class="endpoint">
+    <span>POST</span> /api/validate → key validation endpoint
+  </div>
+</div>
+
+</body>
+</html>
