@@ -1,35 +1,23 @@
 -- ██████████████████████████████████████████████████████
 --           Extreme Solutions | Blox Fruits Hub
 --                      By Tzqy
---              Rayfield UI — Full BF Edition (v3)
+--               ESLib UI — Full BF Edition (v4)
 -- ██████████████████████████████████████████████████████
 
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local ESLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/ESLib.lua"))()
 
 -- ══════════════════════════════════════════════════════
 --  WINDOW
 -- ══════════════════════════════════════════════════════
 
-local Window = Rayfield:CreateWindow({
-    Name                  = "Extreme Solutions | Blox Fruits",
-    Icon                  = "sword",
-    LoadingTitle          = "Extreme Solutions Hub",
-    LoadingSubtitle       = "Blox Fruits  ·  Loading...",
-    Theme                 = "DarkBlue",
-    ToggleUIKeybind       = "K",
-    DisableRayfieldPrompts = true,
-    DisableBuildWarnings  = true,
+local Window = ESLib:CreateWindow({
+    Name            = "Extreme Solutions | Blox Fruits",
+    ToggleUIKeybind = "K",
     ConfigurationSaving = {
         Enabled    = true,
         FolderName = "ExtremeSolutions",
         FileName   = "BloxFruitsHub"
     },
-    Discord = {
-        Enabled      = true,
-        Invite       = "yourserver",    -- replace with your actual Discord invite code
-        RememberJoins = true
-    },
-    KeySystem = false,
 })
 
 -- ══════════════════════════════════════════════════════
@@ -127,12 +115,12 @@ local function disconnectKey(key)
     end
 end
 
-local function notify(title, content, image)
-    Rayfield:Notify({
+local function notify(title, content, _type)
+    Window:Notify({
         Title    = title,
         Content  = content,
         Duration = 3,
-        Image    = image or 4483362458,
+        Type     = _type or "info",
     })
 end
 
@@ -667,7 +655,7 @@ PlayerTab:CreateToggle({
     Callback = function(v)
         S.GodMode = v
         local c = getChar(); if c then applyGodMode(c) end
-        notify("God Mode", v and "Invincible." or "Mortal.", 4483345998)
+        notify("God Mode", v and "Invincible." or "Mortal.", v and "success" or "info")
     end
 })
 
@@ -776,7 +764,7 @@ FarmTab:CreateToggle({
         S.AutoFarm = v
         if v then
             invalidateCache()
-            notify("Auto Farm", "Flying to: " .. tostring(S.FarmTarget), 4483345998)
+            notify("Auto Farm", "Flying to: " .. tostring(S.FarmTarget), "success")
             runFlyFarm(
                 function() return S.FarmTarget end,
                 function() return S.AutoFarm end,
@@ -798,7 +786,7 @@ FarmTab:CreateToggle({
     Callback = function(v)
         S.AutoMastery = v
         if v then
-            notify("Mastery Farm", "Enabled. Equip your weapon/fruit.", 4483345998)
+            notify("Mastery Farm", "Enabled. Equip your weapon/fruit.", "success")
             invalidateCache()
             runFlyFarm(
                 function() return S.FarmTarget end,
@@ -849,7 +837,7 @@ FarmTab:CreateToggle({
     Callback = function(v)
         S.AutoFarmBoss = v
         if v then
-            notify("Boss Farm", "Hunting: " .. tostring(S.BossTarget), 4483345998)
+            notify("Boss Farm", "Hunting: " .. tostring(S.BossTarget), "success")
             invalidateCache()
             runFlyFarm(
                 function() return S.BossTarget end,
@@ -1052,7 +1040,7 @@ FruitTab:CreateToggle({
                 end
                 clearESP("fruits")
             end)
-            notify("Fruit ESP", "Scanning for wild fruits only.", 4483362458)
+            notify("Fruit ESP", "Scanning for wild fruits only.", "info")
         else
             notify("Fruit ESP", "Disabled.")
         end
@@ -1107,7 +1095,7 @@ FruitTab:CreateToggle({
                     task.wait(3)
                 end
             end)
-            notify("Auto Collect", "Collecting wild fruits only.", 4483362458)
+            notify("Auto Collect", "Collecting wild fruits only.", "info")
         else
             notify("Auto Collect", "Stopped.")
         end
@@ -1335,8 +1323,7 @@ VisualTab:CreateButton({
 
 MiscTab:CreateSection("ESP Customization")
 
--- Color pickers via dropdown (Rayfield doesn't have colorpicker natively
--- on all versions, so we use a dropdown of named colours)
+-- Color pickers via dropdown of named colours
 local colorNames = {
     "Red","Orange","Yellow","Lime","Green","Teal",
     "Cyan","Blue","Purple","Pink","Rose","White","Grey"
@@ -1531,7 +1518,7 @@ MiscTab:CreateSection("Credits")
 
 MiscTab:CreateParagraph({
     Title   = "Extreme Solutions  ·  Blox Fruits Hub",
-    Content = "Developed by Extreme Solutions\nUI powered by Rayfield\n\nToggle Menu: K\n\n── Features ──\n• Player: Speed · Jump · Inf Jump · No Clip · God Mode · Anti-KB\n• Farm: Auto Farm · Boss Farm · Mastery Farm (fly locomotion)\n• Teleport: All 3 seas + Café · Mansion · Mirage Island\n• ESP: Fruit · Player · Chest  (fully customisable)\n• Visuals: Full Bright · Time of Day · FOV · Zoom · Character hide\n• Misc: Server hop · Anti-AFK · Clipboard tools\n\nJoin our Discord for updates and support."
+    Content = "Developed by Extreme Solutions\nUI powered by ESLib (custom)\n\nToggle Menu: K\n\n── Features ──\n• Player: Speed · Jump · Inf Jump · No Clip · God Mode · Anti-KB\n• Farm: Auto Farm · Boss Farm · Mastery Farm (fly locomotion)\n• Teleport: All 3 seas + Café · Mansion · Mirage Island\n• ESP: Fruit · Player · Chest  (fully customisable)\n• Visuals: Full Bright · Time of Day · FOV · Zoom · Character hide\n• Misc: Server hop · Anti-AFK · Clipboard tools\n\nJoin our Discord for updates and support."
 })
 
 -- ══════════════════════════════════════════════════════
@@ -1568,6 +1555,6 @@ end
 --  LOAD CONFIG
 -- ══════════════════════════════════════════════════════
 
-Rayfield:LoadConfiguration()
+Window:LoadConfiguration()
 
-notify("Extreme Solutions", "Blox Fruits Hub loaded!  Press K to toggle the menu.", 4483362458)
+notify("Extreme Solutions", "Blox Fruits Hub loaded!  Press K to toggle the menu.", "success")
