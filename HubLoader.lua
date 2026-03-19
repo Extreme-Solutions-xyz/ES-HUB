@@ -684,3 +684,22 @@ inputBox.FocusLost:Connect(function()
         end
     end
 end)
+
+-- ══════════════════════════════════════════════════════
+--  AUTO-LOGIN  (runs after GUI is built)
+--  If a saved key exists, pre-fill and auto-validate
+--  so the user skips the key screen entirely.
+-- ══════════════════════════════════════════════════════
+
+task.spawn(function()
+    -- Small delay so the entrance animation plays first
+    task.wait(0.6)
+    local saved = loadSavedKey()
+    if saved and saved ~= "" and detectedGameName then
+        inputBox.Text          = saved
+        statusLabel.TextColor3 = COLORS.textDim
+        statusLabel.Text       = "Remembered key found — validating..."
+        task.wait(0.3)
+        onValidate()
+    end
+end)
