@@ -229,22 +229,20 @@ panel.Position            = UDim2.new(0.5, 0, 0.5, 0)
 panel.Size                = UDim2.new(0, 420, 0, 360)
 panel.BackgroundColor3    = COLORS.panel
 panel.BorderSizePixel     = 0
+panel.ClipsDescendants    = true   -- lets children be clipped by the panel's rounded corners
 panel.ZIndex              = 2
 panel.Parent              = screenGui
 makeCorner(panel, 14)
 makeStroke(panel, COLORS.border, 1.5)
 
 -- Accent bar at top of panel
+-- No UICorner needed — panel.ClipsDescendants handles the rounded top corners
 local accentBar = Instance.new("Frame")
-accentBar.Size             = UDim2.new(1, 0, 0, 3)
+accentBar.Size             = UDim2.new(1, 0, 0, 4)
 accentBar.BackgroundColor3 = COLORS.accent
 accentBar.BorderSizePixel  = 0
 accentBar.ZIndex           = 3
 accentBar.Parent           = panel
-
-local accentBarCorner = Instance.new("UICorner")
-accentBarCorner.CornerRadius = UDim.new(0, 14)
-accentBarCorner.Parent       = accentBar
 
 -- Logo / title
 local logoLabel = Instance.new("TextLabel")
@@ -403,7 +401,7 @@ closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
 closeBtn.TextColor3       = COLORS.textDim
 closeBtn.TextSize         = 14
 closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.Text             = "✕"
+closeBtn.Text             = "X"
 closeBtn.BorderSizePixel  = 0
 closeBtn.ZIndex           = 5
 closeBtn.Parent           = panel
