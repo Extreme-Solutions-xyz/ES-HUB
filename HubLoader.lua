@@ -238,6 +238,21 @@ local function makeStroke(parent, color, thickness)
     return s
 end
 
+local function fadeAll(root, duration)
+    for _, obj in ipairs(root:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
+        elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+            TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { ImageTransparency = 1, BackgroundTransparency = 1 }):Play()
+        elseif obj:IsA("Frame") then
+            TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
+        elseif obj:IsA("UIStroke") then
+            TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Transparency = 1 }):Play()
+        end
+    end
+    TweenService:Create(root, TweenInfo.new(duration + 0.05, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
+end
+
 -- ══════════════════════════════════════════════════════
 --  MAIN GUI  (Key Entry Screen)
 -- ══════════════════════════════════════════════════════
@@ -469,9 +484,9 @@ closeBtn.MouseLeave:Connect(function()
     tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(26, 36, 24), TextColor3 = COLORS.textDim }, 0.15)
 end)
 closeBtn.MouseButton1Click:Connect(function()
-    tween(panel,   { BackgroundTransparency = 1 }, 0.2)
-    tween(overlay, { BackgroundTransparency = 1 }, 0.25)
-    task.wait(0.3)
+    fadeAll(panel, 0.22)
+    tween(overlay, { BackgroundTransparency = 1 }, 0.28)
+    task.wait(0.35)
     screenGui:Destroy()
 end)
 

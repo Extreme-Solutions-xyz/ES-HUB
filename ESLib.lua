@@ -171,6 +171,21 @@ local function scrollFrame(parent, zindex)
     return s
 end
 
+local function fadeOutGui(root, duration)
+    for _, obj in ipairs(root:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            tw(obj, { TextTransparency = 1, BackgroundTransparency = 1 }, duration)
+        elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+            tw(obj, { ImageTransparency = 1, BackgroundTransparency = 1 }, duration)
+        elseif obj:IsA("Frame") then
+            tw(obj, { BackgroundTransparency = 1 }, duration)
+        elseif obj:IsA("UIStroke") then
+            tw(obj, { Transparency = 1 }, duration)
+        end
+    end
+    tw(root, { BackgroundTransparency = 1 }, duration)
+end
+
 -- ══════════════════════════════════════════════════════
 --  CONFIG PERSISTENCE
 -- ══════════════════════════════════════════════════════
@@ -263,7 +278,8 @@ local function notify(title, content, ntype, duration)
     tw(prog, { Size = UDim2.new(0, 0, 0, 2) }, duration, Enum.EasingStyle.Linear)
 
     task.delay(duration, function()
-        tw(card, { Position = UDim2.new(1, 14, 0, 0), BackgroundTransparency = 1 }, 0.25)
+        fadeOutGui(card, 0.25)
+        tw(card, { Position = UDim2.new(1, 14, 0, 0) }, 0.25)
         task.wait(0.3)
         pcall(function() card:Destroy() end)
     end)
@@ -552,15 +568,54 @@ function ESLib:CreateWindow(config)
             restoreWindow()
         end
     end)
-    miniBubble.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            restoreWindow()
-        end
-    end)
+    do
+        local bubbleDragging  = false
+        local bubbleDragInput = nil
+        local bubbleDragStart = nil
+        local bubbleStartAbsX = 0
+        local bubbleStartAbsY = 0
+        local bubbleMoved     = false
+
+        miniBubble.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                bubbleDragging  = true
+                bubbleDragStart = input.Position
+                bubbleStartAbsX = miniBubble.AbsolutePosition.X + miniBubble.AbsoluteSize.X / 2
+                bubbleStartAbsY = miniBubble.AbsolutePosition.Y + miniBubble.AbsoluteSize.Y / 2
+                bubbleMoved     = false
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        bubbleDragging = false
+                        if not bubbleMoved then
+                            restoreWindow()
+                        end
+                    end
+                end)
+            end
+        end)
+        miniBubble.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                bubbleDragInput = input
+            end
+        end)
+        UIS.InputChanged:Connect(function(input)
+            if input == bubbleDragInput and bubbleDragging then
+                local DRAG_THRESHOLD   = 6   -- px — distinguishes click from drag
+                local BUBBLE_EDGE_MARGIN = 40 -- px — safe zone from screen edges
+                local delta = input.Position - bubbleDragStart
+                if delta.Magnitude > DRAG_THRESHOLD then bubbleMoved = true end
+                local vp = game:GetService("Workspace").CurrentCamera.ViewportSize
+                local nx = math.clamp(bubbleStartAbsX + delta.X, BUBBLE_EDGE_MARGIN, vp.X - BUBBLE_EDGE_MARGIN)
+                local ny = math.clamp(bubbleStartAbsY + delta.Y, BUBBLE_EDGE_MARGIN, vp.Y - BUBBLE_EDGE_MARGIN)
+                miniBubble.Position = UDim2.new(0, nx, 0, ny)
+                glowRing.Position   = UDim2.new(0, nx, 0, ny)
+            end
+        end)
+    end
     closeBtn.MouseButton1Click:Connect(function()
-        tw(win,           { Size = UDim2.new(0, WIN_W, 0, 0), BackgroundTransparency = 1 }, 0.25)
-        tw(shadow,        { BackgroundTransparency = 1 }, 0.25)
-        tw(borderOverlay, { BackgroundTransparency = 1 }, 0.25)
+        fadeOutGui(win, 0.25)
+        fadeOutGui(shadow, 0.25)
+        fadeOutGui(borderOverlay, 0.25)
         task.wait(0.3)
         gui:Destroy()
         notifGui:Destroy()
