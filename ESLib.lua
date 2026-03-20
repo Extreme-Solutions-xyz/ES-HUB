@@ -1,6 +1,6 @@
 -- ██████████████████████████████████████████████████████
 --           Extreme Solutions  |  ES-UI Library
---                       v1.1
+--                       v1.2
 --      Custom UI framework for all ES Hub scripts
 -- ██████████████████████████████████████████████████████
 
@@ -29,7 +29,7 @@ local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 -- ══════════════════════════════════════════════════════
 
 local T = {
-    -- Backgrounds  (dark green-tinted darks)
+    -- Backgrounds
     bg          = Color3.fromRGB( 8,  12,  8),
     sidebar     = Color3.fromRGB(11,  16, 11),
     panel       = Color3.fromRGB(14,  20, 14),
@@ -38,7 +38,7 @@ local T = {
     input       = Color3.fromRGB(10,  15, 10),
     overlay     = Color3.fromRGB(11,  15, 11),
 
-    -- Accent  (ES lime-green)
+    -- Accent (ES lime-green)
     accent      = Color3.fromRGB( 98, 210,  60),
     accentDark  = Color3.fromRGB( 65, 145,  35),
     accentLight = Color3.fromRGB(140, 235, 100),
@@ -61,7 +61,7 @@ local T = {
     toggleOn    = Color3.fromRGB( 98, 210,  60),
     toggleOff   = Color3.fromRGB( 30,  45,  30),
 
-    -- Borders  (green-tinted)
+    -- Borders
     border      = Color3.fromRGB( 40,  70,  40),
     borderHov   = Color3.fromRGB( 65, 110,  65),
 
@@ -108,12 +108,13 @@ local function stroke(parent, color, thickness)
     return s
 end
 
+-- NOTE: All padding values use UDim.new (not UDim2.new) — UIPadding requires UDim
 local function pad(parent, top, right, bot, left)
     local p = Instance.new("UIPadding")
     p.PaddingTop    = UDim.new(0, top   or 0)
-    p.PaddingRight  = UDim2.new(0, right or 0)
-    p.PaddingBottom = UDim2.new(0, bot   or 0)
-    p.PaddingLeft   = UDim2.new(0, left  or 0)
+    p.PaddingRight  = UDim.new(0, right or 0)
+    p.PaddingBottom = UDim.new(0, bot   or 0)
+    p.PaddingLeft   = UDim.new(0, left  or 0)
     p.Parent        = parent
 end
 
@@ -171,7 +172,7 @@ local function scrollFrame(parent, zindex)
 end
 
 -- ══════════════════════════════════════════════════════
---  CONFIG PERSISTENCE  (executor readfile / writefile)
+--  CONFIG PERSISTENCE
 -- ══════════════════════════════════════════════════════
 
 local function saveConfig(folder, file, data)
@@ -227,7 +228,6 @@ local function notify(title, content, ntype, duration)
     corner(card, 10)
     stroke(card, T.border, 1.5)
 
-    -- Left accent bar
     local bar = newFrame({ Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = col, Parent = card })
     corner(bar, 2)
 
@@ -250,11 +250,9 @@ local function notify(title, content, ntype, duration)
         Parent      = card,
     })
 
-    -- Slide in from right
     card.Position = UDim2.new(1, 14, 0, 0)
     tw(card, { Position = UDim2.new(0, 0, 0, 0) }, 0.3, Enum.EasingStyle.Back)
 
-    -- Progress bar
     local prog = newFrame({
         Size             = UDim2.new(1, 0, 0, 2),
         Position         = UDim2.new(0, 0, 1, -2),
@@ -278,7 +276,6 @@ end
 function ESLib:CreateWindow(config)
     config = config or {}
 
-    -- ── ScreenGui ────────────────────────────────────
     local gui = Instance.new("ScreenGui")
     gui.Name            = "ESHub"
     gui.ResetOnSpawn    = false
@@ -287,7 +284,6 @@ function ESLib:CreateWindow(config)
     gui.DisplayOrder    = 100
     gui.Parent          = PlayerGui
 
-    -- ── Shadow ───────────────────────────────────────
     local shadow = newFrame({
         AnchorPoint            = Vector2.new(0.5, 0.5),
         Position               = UDim2.new(0.5, 3, 0.5, 5),
@@ -299,7 +295,6 @@ function ESLib:CreateWindow(config)
     })
     corner(shadow, 18)
 
-    -- ── Main window ──────────────────────────────────
     local win = newFrame({
         AnchorPoint      = Vector2.new(0.5, 0.5),
         Position         = UDim2.new(0.5, 0, 0.5, 0),
@@ -311,7 +306,6 @@ function ESLib:CreateWindow(config)
     })
     corner(win, 16)
 
-    -- ── Border overlay ───────────────────────────────
     local borderOverlay = newFrame({
         AnchorPoint            = Vector2.new(0.5, 0.5),
         Position               = UDim2.new(0.5, 0, 0.5, 0),
@@ -323,15 +317,13 @@ function ESLib:CreateWindow(config)
     corner(borderOverlay, 16)
     stroke(borderOverlay, T.border, 1.5)
 
-    -- ── Header ───────────────────────────────────────
+    -- Header
     local header = newFrame({
         Size             = UDim2.new(1, 0, 0, HEADER_H),
         BackgroundColor3 = T.sidebar,
         ZIndex           = 4,
         Parent           = win,
     })
-
-    -- Header bottom divider
     newFrame({
         Size             = UDim2.new(1, 0, 0, 1),
         Position         = UDim2.new(0, 0, 1, -1),
@@ -340,7 +332,7 @@ function ESLib:CreateWindow(config)
         Parent           = header,
     })
 
-    -- ── ES Logo badge (ImageLabel) ───────────────────
+    -- ES Logo badge
     local badge = Instance.new("ImageLabel")
     badge.Size                   = UDim2.new(0, 32, 0, 32)
     badge.Position               = UDim2.new(0, 8, 0.5, -16)
@@ -350,7 +342,6 @@ function ESLib:CreateWindow(config)
     badge.ZIndex                 = 5
     badge.Parent                 = header
 
-    -- Window title
     newLabel({
         Size           = UDim2.new(0, 240, 1, 0),
         Position       = UDim2.new(0, 48, 0, 0),
@@ -363,7 +354,6 @@ function ESLib:CreateWindow(config)
         Parent         = header,
     })
 
-    -- Version / subtitle (centred)
     newLabel({
         Size           = UDim2.new(0, 180, 1, 0),
         Position       = UDim2.new(0.5, -90, 0, 0),
@@ -375,7 +365,7 @@ function ESLib:CreateWindow(config)
         Parent         = header,
     })
 
-    -- ── Window control buttons ────────────────────────
+    -- Window control buttons
     local function makeCtrl(offsetX, label, hoverColor)
         local b = newBtn({
             Size             = UDim2.new(0, 26, 0, 26),
@@ -399,7 +389,7 @@ function ESLib:CreateWindow(config)
     local closeBtn = makeCtrl(-36, "X", T.error)
     local minBtn   = makeCtrl(-68, "-", T.accentDark)
 
-    -- ── Sidebar ───────────────────────────────────────
+    -- Sidebar
     local sidebar = newFrame({
         Size             = UDim2.new(0, SIDEBAR_W, 0, CONTENT_H),
         Position         = UDim2.new(0, 0, 0, HEADER_H),
@@ -407,8 +397,6 @@ function ESLib:CreateWindow(config)
         ZIndex           = 3,
         Parent           = win,
     })
-
-    -- Sidebar right divider
     newFrame({
         Size             = UDim2.new(0, 1, 1, 0),
         Position         = UDim2.new(1, -1, 0, 0),
@@ -417,7 +405,6 @@ function ESLib:CreateWindow(config)
         Parent           = sidebar,
     })
 
-    -- Sidebar bottom branding strip
     local brandStrip = newFrame({
         Size             = UDim2.new(1, -2, 0, 28),
         Position         = UDim2.new(0, 0, 1, -28),
@@ -437,14 +424,13 @@ function ESLib:CreateWindow(config)
         Parent         = brandStrip,
     })
 
-    -- Tab list (scrollable)
     local tabListScroll = scrollFrame(sidebar, 4)
     tabListScroll.Size     = UDim2.new(1, 0, 1, -34)
     tabListScroll.Position = UDim2.new(0, 0, 0, 6)
     listLayout(tabListScroll, 2)
     pad(tabListScroll, 0, 6, 0, 6)
 
-    -- ── Content area ──────────────────────────────────
+    -- Content area
     local contentArea = newFrame({
         Size             = UDim2.new(0, CONTENT_W, 0, CONTENT_H),
         Position         = UDim2.new(0, SIDEBAR_W, 0, HEADER_H),
@@ -453,7 +439,7 @@ function ESLib:CreateWindow(config)
         Parent           = win,
     })
 
-    -- ── Drag ─────────────────────────────────────────
+    -- Drag
     do
         local dragging, dragInput, dragStart, startWin, startShadow
 
@@ -490,7 +476,7 @@ function ESLib:CreateWindow(config)
         end)
     end
 
-    -- ── Minimize / Close ──────────────────────────────
+    -- Minimize / Close
     local minimised = false
     minBtn.MouseButton1Click:Connect(function()
         minimised = not minimised
@@ -515,7 +501,7 @@ function ESLib:CreateWindow(config)
         notifGui:Destroy()
     end)
 
-    -- ── Keybind toggle ────────────────────────────────
+    -- Keybind toggle
     if config.ToggleUIKeybind then
         local keyStr = config.ToggleUIKeybind:upper()
         UIS.InputBegan:Connect(function(input, gameProcessed)
@@ -528,7 +514,7 @@ function ESLib:CreateWindow(config)
         end)
     end
 
-    -- ── Entrance animation ────────────────────────────
+    -- Entrance animation
     win.Size           = UDim2.new(0, WIN_W, 0, 0)
     shadow.Size        = UDim2.new(0, WIN_W + 14, 0, 0)
     borderOverlay.Size = UDim2.new(0, WIN_W, 0, 0)
@@ -538,7 +524,7 @@ function ESLib:CreateWindow(config)
         tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.45, Enum.EasingStyle.Back)
     end)
 
-    -- ── Config state ──────────────────────────────────
+    -- Config state
     local cfgFolder   = (config.ConfigurationSaving and config.ConfigurationSaving.FolderName) or "ESHub"
     local cfgFile     = (config.ConfigurationSaving and config.ConfigurationSaving.FileName)   or "config"
     local savedValues = {}
@@ -659,7 +645,7 @@ function ESLib:CreateWindow(config)
             return f
         end
 
-        -- ── SECTION ──────────────────────────────────
+        -- SECTION
         function Tab:CreateSection(sectionName)
             local sec = newFrame({
                 Size                   = UDim2.new(1, 0, 0, 26),
@@ -668,14 +654,14 @@ function ESLib:CreateWindow(config)
                 Parent                 = content,
             })
             newLabel({
-                Size              = UDim2.new(0, 0, 1, 0),
-                AutomaticSize     = Enum.AutomaticSize.X,
-                Text              = sectionName:upper(),
-                TextSize          = 10,
-                Font              = Enum.Font.GothamBold,
-                TextColor3        = T.accent,
-                TextYAlignment    = Enum.TextYAlignment.Center,
-                Parent            = sec,
+                Size           = UDim2.new(0, 0, 1, 0),
+                AutomaticSize  = Enum.AutomaticSize.X,
+                Text           = sectionName:upper(),
+                TextSize       = 10,
+                Font           = Enum.Font.GothamBold,
+                TextColor3     = T.accent,
+                TextYAlignment = Enum.TextYAlignment.Center,
+                Parent         = sec,
             })
             newFrame({
                 Size             = UDim2.new(1, 0, 0, 1),
@@ -685,7 +671,7 @@ function ESLib:CreateWindow(config)
             })
         end
 
-        -- ── TOGGLE ───────────────────────────────────
+        -- TOGGLE
         function Tab:CreateToggle(cfg)
             cfg = cfg or {}
             local val  = cfg.CurrentValue or false
@@ -757,7 +743,7 @@ function ESLib:CreateWindow(config)
             return toggleObj
         end
 
-        -- ── SLIDER ───────────────────────────────────
+        -- SLIDER
         function Tab:CreateSlider(cfg)
             cfg = cfg or {}
             local mn  = cfg.Range and cfg.Range[1] or 0
@@ -849,7 +835,7 @@ function ESLib:CreateWindow(config)
             return sliderObj
         end
 
-        -- ── BUTTON ───────────────────────────────────
+        -- BUTTON
         function Tab:CreateButton(cfg)
             cfg = cfg or {}
             local tall = cfg.Description and 56 or 40
@@ -910,7 +896,7 @@ function ESLib:CreateWindow(config)
             end)
         end
 
-        -- ── DROPDOWN ─────────────────────────────────
+        -- DROPDOWN
         function Tab:CreateDropdown(cfg)
             cfg = cfg or {}
             local options    = cfg.Options or {}
@@ -975,7 +961,8 @@ function ESLib:CreateWindow(config)
                 local listSF = scrollFrame(dropFrame, 61)
                 listSF.Size     = UDim2.new(1, 0, 1, -(searchable and 36 or 2))
                 listSF.Position = UDim2.new(0, 0, 0, searchable and 36 or 2)
-                listLayout(listSF, 2); pad(listSF, 2, 3, 2, 3)
+                listLayout(listSF, 2)
+                pad(listSF, 2, 3, 2, 3)
 
                 for _, opt in ipairs(options) do
                     local isSelected = opt == cur
@@ -1038,7 +1025,7 @@ function ESLib:CreateWindow(config)
             return dropObj
         end
 
-        -- ── MULTI-DROPDOWN ───────────────────────────
+        -- MULTI-DROPDOWN
         function Tab:CreateMultiDropdown(cfg)
             cfg = cfg or {}
             local options    = cfg.Options or {}
@@ -1165,7 +1152,7 @@ function ESLib:CreateWindow(config)
             return mdObj
         end
 
-        -- ── INPUT ─────────────────────────────────────
+        -- INPUT
         function Tab:CreateInput(cfg)
             cfg = cfg or {}
             local c = card(58)
@@ -1201,7 +1188,7 @@ function ESLib:CreateWindow(config)
             return inputObj
         end
 
-        -- ── PARAGRAPH ─────────────────────────────────
+        -- PARAGRAPH
         function Tab:CreateParagraph(cfg)
             cfg = cfg or {}
             local lines    = select(2, (cfg.Content or ""):gsub("\n", "")) + 1
@@ -1226,7 +1213,7 @@ function ESLib:CreateWindow(config)
             })
         end
 
-        -- ── KEYBIND ───────────────────────────────────
+        -- KEYBIND
         function Tab:CreateKeybind(cfg)
             cfg = cfg or {}
             local cur       = cfg.CurrentKeybind or "None"
@@ -1251,8 +1238,7 @@ function ESLib:CreateWindow(config)
                 local conn
                 conn = UIS.InputBegan:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.Keyboard then
-                        cur = tostring(input.KeyCode):gsub("Enum.KeyCode.", "");
-                        kLbl.Text = cur; tw(kLbl, { TextColor3 = T.accent }, 0.1)
+                        cur = tostring(input.KeyCode):gsub("Enum.KeyCode.", ""); kLbl.Text = cur; tw(kLbl, { TextColor3 = T.accent }, 0.1)
                         listening = false; conn:Disconnect()
                         if cfg.Flag then savedValues[cfg.Flag] = cur end
                         if cfg.Callback then cfg.Callback(input.KeyCode) end
@@ -1268,10 +1254,7 @@ function ESLib:CreateWindow(config)
         return Tab
     end
 
-    -- ══════════════════════════════════════════════════
-    --  Window-level methods
-    -- ══════════════════════════════════════════════════
-
+    -- Window-level methods
     function Window:Notify(cfg)
         cfg = cfg or {}
         notify(cfg.Title or "", cfg.Content or "", cfg.Type, cfg.Duration)
