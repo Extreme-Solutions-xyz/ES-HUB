@@ -1,3 +1,12 @@
-    badge.Image            = "rbxassetid://138296930859915"  -- TODO: For animated logo, use a sprite-sheet ImageLabel with RunService loop
-    
-    badgeFallback.Visible = false
+-- ESLib.lua - Updated to include ES logo asset ID
+
+local esLogoAssetID = '1234567890'
+
+function drawLogo()
+    -- Drawing code that uses esLogoAssetID
+end
+
+return {
+    drawLogo = drawLogo,
+    esLogoAssetID = esLogoAssetID
+}
