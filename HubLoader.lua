@@ -203,14 +203,15 @@ end
 -- ══════════════════════════════════════════════════════
 
 local COLORS = {
-    bg         = Color3.fromRGB( 9, 12,  9),
+    bg         = Color3.fromRGB( 8, 12,  8),
     panel      = Color3.fromRGB(16, 20, 16),
-    border     = Color3.fromRGB(34, 54, 30),
+    border     = Color3.fromRGB(40, 70, 40),
     accent     = Color3.fromRGB(98,210, 60),
     accentHov  = Color3.fromRGB(118,230, 75),
     text       = Color3.fromRGB(220,220,235),
     textDim    = Color3.fromRGB(130,130,155),
     inputBg    = Color3.fromRGB(11, 14, 11),
+    sidebar    = Color3.fromRGB(11, 16, 11),
     success    = Color3.fromRGB(80, 210,120),
     error      = Color3.fromRGB(220, 80, 80),
     warning    = Color3.fromRGB(255,190, 50),
@@ -232,19 +233,20 @@ end
 
 local function makeStroke(parent, color, thickness)
     local s = Instance.new("UIStroke")
-    s.Color     = color or COLORS.border
-    s.Thickness = thickness or 1
-    s.Parent    = parent
+    s.Color           = color or COLORS.border
+    s.Thickness       = thickness or 1.5
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent          = parent
     return s
 end
 
 local function fadeAll(root, duration)
     for _, obj in ipairs(root:GetDescendants()) do
         if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
+            TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 1, TextStrokeTransparency = 1, BackgroundTransparency = 1 }):Play()
         elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
             TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { ImageTransparency = 1, BackgroundTransparency = 1 }):Play()
-        elseif obj:IsA("Frame") then
+        elseif obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
             TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
         elseif obj:IsA("UIStroke") then
             TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Transparency = 1 }):Play()
@@ -299,12 +301,14 @@ accentBar.Parent           = panel
 local headerBg = Instance.new("Frame")
 headerBg.Size             = UDim2.new(1, 0, 0, 78)
 headerBg.Position         = UDim2.new(0, 0, 0, 4)   -- sits just below accent bar
-headerBg.BackgroundColor3 = Color3.fromRGB(12, 16, 12)
+headerBg.BackgroundColor3 = COLORS.sidebar
 headerBg.BorderSizePixel  = 0
 headerBg.ZIndex           = 2
 headerBg.Parent           = panel
 
 -- ES badge (ImageLabel with real logo asset)
+-- NOTE: GIFs cannot be used directly in Roblox ImageLabels; the static asset below is used instead.
+-- For animated logo support in future, a spritesheet + RunService loop approach would be needed.
 local esBadge = Instance.new("ImageLabel")
 esBadge.Size                   = UDim2.new(0, 36, 0, 36)
 esBadge.Position               = UDim2.new(0, 18, 0, 22)
@@ -403,7 +407,7 @@ inputBox.BorderSizePixel        = 0
 inputBox.ZIndex                 = 3
 inputBox.Parent                 = panel
 makeCorner(inputBox, 8)
-makeStroke(inputBox, COLORS.border, 1)
+makeStroke(inputBox, COLORS.border, 1.5)
 
 -- Status label
 local statusLabel = Instance.new("TextLabel")
@@ -432,6 +436,7 @@ validateBtn.BorderSizePixel  = 0
 validateBtn.ZIndex           = 3
 validateBtn.Parent           = panel
 makeCorner(validateBtn, 8)
+makeStroke(validateBtn, COLORS.border, 1.5)
 
 -- Store link button (left half)
 local storeBtn = Instance.new("TextButton")
@@ -446,7 +451,7 @@ storeBtn.BorderSizePixel  = 0
 storeBtn.ZIndex           = 3
 storeBtn.Parent           = panel
 makeCorner(storeBtn, 6)
-makeStroke(storeBtn, COLORS.border, 1)
+makeStroke(storeBtn, COLORS.border, 1.5)
 
 -- Discord link button (right half)
 local discordBtn = Instance.new("TextButton")
@@ -461,7 +466,7 @@ discordBtn.BorderSizePixel  = 0
 discordBtn.ZIndex           = 3
 discordBtn.Parent           = panel
 makeCorner(discordBtn, 6)
-makeStroke(discordBtn, COLORS.border, 1)
+makeStroke(discordBtn, COLORS.border, 1.5)
 
 -- Close button (X) top-right — positioned fully inside the panel
 local closeBtn = Instance.new("TextButton")
@@ -476,6 +481,7 @@ closeBtn.BorderSizePixel  = 0
 closeBtn.ZIndex           = 5
 closeBtn.Parent           = panel
 makeCorner(closeBtn, 6)
+makeStroke(closeBtn, COLORS.border, 1.5)
 
 closeBtn.MouseEnter:Connect(function()
     tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(200, 60, 60), TextColor3 = COLORS.white }, 0.15)

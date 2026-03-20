@@ -174,10 +174,10 @@ end
 local function fadeOutGui(root, duration)
     for _, obj in ipairs(root:GetDescendants()) do
         if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            tw(obj, { TextTransparency = 1, BackgroundTransparency = 1 }, duration)
+            tw(obj, { TextTransparency = 1, TextStrokeTransparency = 1, BackgroundTransparency = 1 }, duration)
         elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
             tw(obj, { ImageTransparency = 1, BackgroundTransparency = 1 }, duration)
-        elseif obj:IsA("Frame") then
+        elseif obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
             tw(obj, { BackgroundTransparency = 1 }, duration)
         elseif obj:IsA("UIStroke") then
             tw(obj, { Transparency = 1 }, duration)
@@ -349,6 +349,8 @@ function ESLib:CreateWindow(config)
     })
 
     -- ES Logo badge
+    -- NOTE: GIFs cannot be used directly in Roblox ImageLabels; the static asset below is used instead.
+    -- For animated logo support in future, a spritesheet + RunService loop approach would be needed.
     local badge = Instance.new("ImageLabel")
     badge.Size                   = UDim2.new(0, 32, 0, 32)
     badge.Position               = UDim2.new(0, 8, 0.5, -16)
@@ -543,13 +545,17 @@ function ESLib:CreateWindow(config)
         minimised             = false
         miniBubble.Visible    = false
         glowRing.Visible      = false
-        win.Visible           = true
-        shadow.Visible        = true
-        borderOverlay.Visible = true
         minBtn.Text           = "-"
+        -- Reset to screen center so window always appears centered after bubble drag
+        win.Position           = UDim2.new(0.5, 0, 0.5, 0)
+        shadow.Position        = UDim2.new(0.5, 3, 0.5, 5)
+        borderOverlay.Position = UDim2.new(0.5, 0, 0.5, 0)
         win.Size           = UDim2.new(0, WIN_W, 0, 0)
         shadow.Size        = UDim2.new(0, WIN_W + 14, 0, 0)
         borderOverlay.Size = UDim2.new(0, WIN_W, 0, 0)
+        win.Visible           = true
+        shadow.Visible        = true
+        borderOverlay.Visible = true
         tw(win,           { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.4, Enum.EasingStyle.Back)
         tw(shadow,        { Size = UDim2.new(0, WIN_W + 14, 0, WIN_H + 14) }, 0.4, Enum.EasingStyle.Back)
         tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.4, Enum.EasingStyle.Back)
@@ -764,7 +770,7 @@ function ESLib:CreateWindow(config)
                 Parent           = content,
             })
             corner(f, 8)
-            stroke(f, T.border, 1)
+            stroke(f, T.border, 1.5)
             return f
         end
 
