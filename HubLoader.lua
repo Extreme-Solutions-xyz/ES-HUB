@@ -1,17 +1,18 @@
 -- ██████████████████████████████████████████████████████
---           Extreme Solutions | Script Hub
---                   Hub Loader v1
---        Key System  ·  Game Detection  ·  Auto Load
+-- Extreme Solutions | Script Hub
+-- Hub Loader v1.1  (Mobile Support)
+-- Key System · Game Detection · Auto Load
 -- ██████████████████████████████████████████████████████
 
+
 -- ══════════════════════════════════════════════════════
---  HUB CONFIG  ← Edit these values for your setup
+-- HUB CONFIG ← Edit these values for your setup
 -- ══════════════════════════════════════════════════════
 
 local CONFIG = {
     -- Your Railway-deployed API base URL (no trailing slash)
     -- e.g. "https://extremesolutions-keysystem.up.railway.app"
-    APIBaseURL = "https://extremesolutionskeysystem-production.up.railway.app",
+    APIBaseURL  = "https://extremesolutionskeysystem-production.up.railway.app",
 
     --[[
         Fallback: add valid keys here for offline testing only.
@@ -22,20 +23,21 @@ local CONFIG = {
     },
 
     -- Store / key purchase link shown in the GUI
-    StoreURL = "https://extremesolutions.xyz",
+    StoreURL    = "https://extremesolutions.xyz",
 
     -- Discord invite shown in the GUI
-    DiscordURL = "https://discord.gg/extreme",
+    DiscordURL  = "https://discord.gg/extreme",
 
     -- Hub version shown in the GUI
-    Version = "v1.0",
+    Version     = "v1.1",
 }
 
+
 -- ══════════════════════════════════════════════════════
---  GAME MAP  ← Add supported games here
---  Format: [PlaceId] = { name, scriptURL }
---  Find a game's PlaceId in its Roblox URL:
---      roblox.com/games/PLACEID/game-name
+-- GAME MAP ← Add supported games here
+-- Format:  [PlaceId] = { name, scriptURL }
+-- Find a game's PlaceId in its Roblox URL:
+--   roblox.com/games/PLACEID/game-name
 -- ══════════════════════════════════════════════════════
 
 local GAMES = {
@@ -43,7 +45,8 @@ local GAMES = {
         name      = "Blox Fruits",
         scriptURL = "https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/BloxFruitsHub.lua",
     },
-    --[[  Template for adding more games:
+
+    --[[ Template for adding more games:
     [PLACE_ID_HERE] = {
         name      = "Game Name",
         scriptURL = "https://raw.githubusercontent.com/.../Script.lua",
@@ -51,20 +54,41 @@ local GAMES = {
     --]]
 }
 
--- ══════════════════════════════════════════════════════
---  SERVICES
--- ══════════════════════════════════════════════════════
-
-local Players      = game:GetService("Players")
-local HttpService  = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService")
-local RunService   = game:GetService("RunService")
-
-local player       = Players.LocalPlayer
-local playerGui    = player:WaitForChild("PlayerGui")
 
 -- ══════════════════════════════════════════════════════
---  KEY VALIDATION
+-- SERVICES
+-- ══════════════════════════════════════════════════════
+
+local Players         = game:GetService("Players")
+local HttpService     = game:GetService("HttpService")
+local TweenService    = game:GetService("TweenService")
+local RunService      = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+
+-- ══════════════════════════════════════════════════════
+-- MOBILE DETECTION
+-- ══════════════════════════════════════════════════════
+
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- Get screen size for scaling
+local camera = game:GetService("Workspace").CurrentCamera
+local vpSize = camera.ViewportSize
+
+-- Panel dimensions: PC stays exactly the same, mobile scales down
+local PANEL_W = IS_MOBILE and math.min(340, vpSize.X - 40) or 420
+local PANEL_H = IS_MOBILE and math.min(340, vpSize.Y - 80) or 360
+
+-- Scaling factor for font sizes, spacing, element heights on mobile
+local S = IS_MOBILE and math.min(PANEL_W / 420, PANEL_H / 360) or 1
+
+
+-- ══════════════════════════════════════════════════════
+-- KEY VALIDATION
 -- ══════════════════════════════════════════════════════
 
 local function isOfflineKey(key)
@@ -87,8 +111,9 @@ end
 -- Executor-compatible HTTP request (works across Synapse, KRNL, Fluxus, etc.)
 local httpRequest = (syn and syn.request) or (http and http.request) or request or http_request
 
+
 -- ══════════════════════════════════════════════════════
---  KEY PERSISTENCE  (save / load from executor filesystem)
+-- KEY PERSISTENCE (save / load from executor filesystem)
 -- ══════════════════════════════════════════════════════
 
 local KEY_FOLDER = "ExtremeSolutions"
@@ -133,7 +158,7 @@ local function validateKey(key)
         return false, "Your executor does not support HTTP requests."
     end
 
-    -- 2. POST /api/validate  { key, hwid }
+    -- 2. POST /api/validate { key, hwid }
     local body = HttpService:JSONEncode({ key = key, hwid = getHWID() })
 
     local ok, result = pcall(function()
@@ -170,8 +195,9 @@ local function validateKey(key)
     end
 end
 
+
 -- ══════════════════════════════════════════════════════
---  GAME DETECTION
+-- GAME DETECTION
 -- ══════════════════════════════════════════════════════
 
 local function detectGame()
@@ -183,8 +209,9 @@ local function detectGame()
     return nil, nil
 end
 
+
 -- ══════════════════════════════════════════════════════
---  SCRIPT LOADER
+-- SCRIPT LOADER
 -- ══════════════════════════════════════════════════════
 
 local function loadGameScript(scriptURL, gameName)
@@ -198,24 +225,25 @@ local function loadGameScript(scriptURL, gameName)
     return true, nil
 end
 
+
 -- ══════════════════════════════════════════════════════
---  GUI BUILDER
+-- GUI BUILDER
 -- ══════════════════════════════════════════════════════
 
 local COLORS = {
-    bg         = Color3.fromRGB(  8,  12,   8),
-    panel      = Color3.fromRGB( 14,  20,  14),
-    border     = Color3.fromRGB( 40,  70,  40),
-    accent     = Color3.fromRGB( 98, 210,  60),
-    accentHov  = Color3.fromRGB(118, 230,  75),
-    text       = Color3.fromRGB(228, 242, 228),
-    textDim    = Color3.fromRGB( 70, 100,  70),
-    inputBg    = Color3.fromRGB( 10,  15,  10),
-    sidebar    = Color3.fromRGB( 11,  16,  11),
-    success    = Color3.fromRGB( 70, 200, 108),
-    error      = Color3.fromRGB(210,  65,  65),
-    warning    = Color3.fromRGB(238, 175,  42),
-    white      = Color3.fromRGB(255, 255, 255),
+    bg        = Color3.fromRGB(  8,  12,   8),
+    panel     = Color3.fromRGB( 14,  20,  14),
+    border    = Color3.fromRGB( 40,  70,  40),
+    accent    = Color3.fromRGB( 98, 210,  60),
+    accentHov = Color3.fromRGB(118, 230,  75),
+    text      = Color3.fromRGB(228, 242, 228),
+    textDim   = Color3.fromRGB( 70, 100,  70),
+    inputBg   = Color3.fromRGB( 10,  15,  10),
+    sidebar   = Color3.fromRGB( 11,  16,  11),
+    success   = Color3.fromRGB( 70, 200, 108),
+    error     = Color3.fromRGB(210,  65,  65),
+    warning   = Color3.fromRGB(238, 175,  42),
+    white     = Color3.fromRGB(255, 255, 255),
 }
 
 local function tween(obj, props, t, style, dir)
@@ -233,10 +261,10 @@ end
 
 local function makeStroke(parent, color, thickness)
     local s = Instance.new("UIStroke")
-    s.Color           = color or COLORS.border
-    s.Thickness       = thickness or 1.5
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    s.Parent          = parent
+    s.Color            = color or COLORS.border
+    s.Thickness        = thickness or 1.5
+    s.ApplyStrokeMode  = Enum.ApplyStrokeMode.Border
+    s.Parent           = parent
     return s
 end
 
@@ -255,233 +283,261 @@ local function fadeAll(root, duration)
     TweenService:Create(root, TweenInfo.new(duration + 0.05, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
 end
 
+
 -- ══════════════════════════════════════════════════════
---  MAIN GUI  (Key Entry Screen)
+-- SCALED HELPER (returns value scaled for mobile)
+-- ══════════════════════════════════════════════════════
+
+local function sc(val)
+    return math.floor(val * S)
+end
+
+
+-- ══════════════════════════════════════════════════════
+-- MAIN GUI (Key Entry Screen)
 -- ══════════════════════════════════════════════════════
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name              = "ESHubKeyGui"
-screenGui.ResetOnSpawn      = false
-screenGui.ZIndexBehavior    = Enum.ZIndexBehavior.Sibling
-screenGui.IgnoreGuiInset    = true
-screenGui.Parent            = playerGui
+screenGui.Name                = "ESHubKeyGui"
+screenGui.ResetOnSpawn        = false
+screenGui.ZIndexBehavior      = Enum.ZIndexBehavior.Sibling
+screenGui.IgnoreGuiInset      = true
+screenGui.Parent              = playerGui
 
 -- Fullscreen dark overlay
 local overlay = Instance.new("Frame")
-overlay.Size                   = UDim2.new(1, 0, 1, 0)
-overlay.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
+overlay.Size                  = UDim2.new(1, 0, 1, 0)
+overlay.BackgroundColor3      = Color3.fromRGB(0, 0, 0)
 overlay.BackgroundTransparency = 0.35
-overlay.BorderSizePixel        = 0
-overlay.ZIndex                 = 1
-overlay.Parent                 = screenGui
+overlay.BorderSizePixel       = 0
+overlay.ZIndex                = 1
+overlay.Parent                = screenGui
 
 -- Central panel
 local panel = Instance.new("Frame")
-panel.AnchorPoint         = Vector2.new(0.5, 0.5)
-panel.Position            = UDim2.new(0.5, 0, 0.5, 0)
-panel.Size                = UDim2.new(0, 420, 0, 360)
-panel.BackgroundColor3    = COLORS.panel
-panel.BorderSizePixel     = 0
-panel.ClipsDescendants    = true   -- lets children be clipped by the panel's rounded corners
-panel.ZIndex              = 2
-panel.Parent              = screenGui
-makeCorner(panel, 14)
+panel.AnchorPoint       = Vector2.new(0.5, 0.5)
+panel.Position          = UDim2.new(0.5, 0, 0.5, 0)
+panel.Size              = UDim2.new(0, PANEL_W, 0, PANEL_H)
+panel.BackgroundColor3  = COLORS.panel
+panel.BorderSizePixel   = 0
+panel.ClipsDescendants  = true
+panel.ZIndex            = 2
+panel.Parent            = screenGui
+makeCorner(panel, sc(14))
 makeStroke(panel, COLORS.border, 1.5)
 
+-- Element spacing/positioning (scales with panel)
+local MARGIN     = sc(20)
+local HEADER_H   = sc(78)
+local ACCENT_H   = sc(4)
+local INPUT_H    = sc(42)
+local BTN_H      = sc(42)
+local LINK_H     = sc(30)
+local BADGE_SIZE = sc(36)
+
 -- Accent bar at top of panel
--- No UICorner needed — panel.ClipsDescendants handles the rounded top corners
 local accentBar = Instance.new("Frame")
-accentBar.Size             = UDim2.new(1, 0, 0, 4)
+accentBar.Size             = UDim2.new(1, 0, 0, ACCENT_H)
 accentBar.BackgroundColor3 = COLORS.accent
 accentBar.BorderSizePixel  = 0
 accentBar.ZIndex           = 3
 accentBar.Parent           = panel
 
--- Header background strip (matches ESLib sidebar colour)
+-- Header background strip
 local headerBg = Instance.new("Frame")
-headerBg.Size             = UDim2.new(1, 0, 0, 78)
-headerBg.Position         = UDim2.new(0, 0, 0, 4)   -- sits just below accent bar
+headerBg.Size             = UDim2.new(1, 0, 0, HEADER_H)
+headerBg.Position         = UDim2.new(0, 0, 0, ACCENT_H)
 headerBg.BackgroundColor3 = COLORS.sidebar
 headerBg.BorderSizePixel  = 0
 headerBg.ZIndex           = 2
 headerBg.Parent           = panel
 
--- ES badge (ImageLabel with real logo asset)
--- ES Logo | Asset: rbxassetid://109874799185427
--- NOTE: Roblox ImageLabel does not support animated GIFs.
--- For animated logo, use a sprite-sheet with RunService in a future update.
+-- ES badge
 local esBadge = Instance.new("ImageLabel")
-esBadge.Size                   = UDim2.new(0, 36, 0, 36)
-esBadge.Position               = UDim2.new(0, 18, 0, 22)
+esBadge.Size                = UDim2.new(0, BADGE_SIZE, 0, BADGE_SIZE)
+esBadge.Position            = UDim2.new(0, MARGIN - 2, 0, sc(22))
 esBadge.BackgroundTransparency = 1
-esBadge.Image                  = "rbxassetid://109874799185427"
-esBadge.ScaleType              = Enum.ScaleType.Fit
-esBadge.ZIndex                 = 4
-esBadge.Parent                 = panel
+esBadge.Image               = "rbxassetid://109874799185427"
+esBadge.ScaleType           = Enum.ScaleType.Fit
+esBadge.ZIndex              = 4
+esBadge.Parent              = panel
 
--- Logo / title (shifted right of badge)
+-- Logo / title
 local logoLabel = Instance.new("TextLabel")
-logoLabel.Size                   = UDim2.new(1, -120, 0, 28)
-logoLabel.Position               = UDim2.new(0, 54, 0, 24)
+logoLabel.Size                = UDim2.new(1, -(MARGIN + BADGE_SIZE + 80), 0, sc(28))
+logoLabel.Position            = UDim2.new(0, BADGE_SIZE + MARGIN, 0, sc(24))
 logoLabel.BackgroundTransparency = 1
-logoLabel.TextColor3             = COLORS.white
-logoLabel.TextSize               = 17
-logoLabel.Font                   = Enum.Font.GothamBold
-logoLabel.TextXAlignment         = Enum.TextXAlignment.Left
-logoLabel.Text                   = "Extreme Solutions"
-logoLabel.ZIndex                 = 4
-logoLabel.Parent                 = panel
+logoLabel.TextColor3          = COLORS.white
+logoLabel.TextSize            = sc(17)
+logoLabel.Font                = Enum.Font.GothamBold
+logoLabel.TextXAlignment      = Enum.TextXAlignment.Left
+logoLabel.Text                = "Extreme Solutions"
+logoLabel.TextScaled          = IS_MOBILE  -- let text scale on mobile to prevent overflow
+logoLabel.ZIndex              = 4
+logoLabel.Parent              = panel
 
 local versionLabel = Instance.new("TextLabel")
-versionLabel.Size                   = UDim2.new(0, 55, 0, 28)
-versionLabel.Position               = UDim2.new(0, 308, 0, 24)
+versionLabel.Size                = UDim2.new(0, sc(55), 0, sc(28))
+versionLabel.Position            = UDim2.new(0, PANEL_W - MARGIN - sc(55) - sc(36), 0, sc(24))
 versionLabel.BackgroundTransparency = 1
-versionLabel.TextColor3             = COLORS.textDim
-versionLabel.TextSize               = 12
-versionLabel.Font                   = Enum.Font.Gotham
-versionLabel.TextXAlignment         = Enum.TextXAlignment.Right
-versionLabel.Text                   = CONFIG.Version
-versionLabel.ZIndex                 = 4
-versionLabel.Parent                 = panel
+versionLabel.TextColor3          = COLORS.textDim
+versionLabel.TextSize            = sc(12)
+versionLabel.Font                = Enum.Font.Gotham
+versionLabel.TextXAlignment      = Enum.TextXAlignment.Right
+versionLabel.Text                = CONFIG.Version
+versionLabel.ZIndex              = 4
+versionLabel.Parent              = panel
 
 local subLabel = Instance.new("TextLabel")
-subLabel.Size                   = UDim2.new(1, -40, 0, 18)
-subLabel.Position               = UDim2.new(0, 54, 0, 50)
+subLabel.Size                = UDim2.new(1, -MARGIN * 2, 0, sc(18))
+subLabel.Position            = UDim2.new(0, BADGE_SIZE + MARGIN, 0, sc(50))
 subLabel.BackgroundTransparency = 1
-subLabel.TextColor3             = COLORS.textDim
-subLabel.TextSize               = 12
-subLabel.Font                   = Enum.Font.Gotham
-subLabel.TextXAlignment         = Enum.TextXAlignment.Left
-subLabel.Text                   = "Script Hub  ·  Key Required"
-subLabel.ZIndex                 = 4
-subLabel.Parent                 = panel
+subLabel.TextColor3          = COLORS.textDim
+subLabel.TextSize            = sc(12)
+subLabel.Font                = Enum.Font.Gotham
+subLabel.TextXAlignment      = Enum.TextXAlignment.Left
+subLabel.Text                = "Script Hub · Key Required"
+subLabel.ZIndex              = 4
+subLabel.Parent              = panel
 
--- Divider (sits at bottom of header strip)
+-- Divider
 local divider = Instance.new("Frame")
 divider.Size             = UDim2.new(1, 0, 0, 1)
-divider.Position         = UDim2.new(0, 0, 0, 82)
+divider.Position         = UDim2.new(0, 0, 0, ACCENT_H + HEADER_H)
 divider.BackgroundColor3 = COLORS.border
 divider.BorderSizePixel  = 0
 divider.ZIndex           = 3
 divider.Parent           = panel
 
+-- Y cursor for laying out elements below the header
+local yPos = ACCENT_H + HEADER_H + sc(14)
+
 -- Game detection status
 local gameLabel = Instance.new("TextLabel")
-gameLabel.Size                   = UDim2.new(1, -40, 0, 22)
-gameLabel.Position               = UDim2.new(0, 20, 0, 96)
+gameLabel.Size                = UDim2.new(1, -MARGIN * 2, 0, sc(22))
+gameLabel.Position            = UDim2.new(0, MARGIN, 0, yPos)
 gameLabel.BackgroundTransparency = 1
-gameLabel.TextColor3             = COLORS.textDim
-gameLabel.TextSize               = 13
-gameLabel.Font                   = Enum.Font.Gotham
-gameLabel.TextXAlignment         = Enum.TextXAlignment.Left
-gameLabel.Text                   = "Detecting game..."
-gameLabel.ZIndex                 = 3
-gameLabel.Parent                 = panel
+gameLabel.TextColor3          = COLORS.textDim
+gameLabel.TextSize            = sc(13)
+gameLabel.Font                = Enum.Font.Gotham
+gameLabel.TextXAlignment      = Enum.TextXAlignment.Left
+gameLabel.Text                = "Detecting game..."
+gameLabel.TextScaled          = IS_MOBILE
+gameLabel.ZIndex              = 3
+gameLabel.Parent              = panel
+yPos = yPos + sc(22) + sc(18)
 
 -- Key input label
 local inputLabel = Instance.new("TextLabel")
-inputLabel.Size                   = UDim2.new(1, -40, 0, 18)
-inputLabel.Position               = UDim2.new(0, 20, 0, 136)
+inputLabel.Size                = UDim2.new(1, -MARGIN * 2, 0, sc(18))
+inputLabel.Position            = UDim2.new(0, MARGIN, 0, yPos)
 inputLabel.BackgroundTransparency = 1
-inputLabel.TextColor3             = COLORS.textDim
-inputLabel.TextSize               = 12
-inputLabel.Font                   = Enum.Font.GothamBold
-inputLabel.TextXAlignment         = Enum.TextXAlignment.Left
-inputLabel.Text                   = "ENTER YOUR KEY"
-inputLabel.ZIndex                 = 3
-inputLabel.Parent                 = panel
+inputLabel.TextColor3          = COLORS.textDim
+inputLabel.TextSize            = sc(12)
+inputLabel.Font                = Enum.Font.GothamBold
+inputLabel.TextXAlignment      = Enum.TextXAlignment.Left
+inputLabel.Text                = "ENTER YOUR KEY"
+inputLabel.ZIndex              = 3
+inputLabel.Parent              = panel
+yPos = yPos + sc(22)
 
 -- Key input box
 local inputBox = Instance.new("TextBox")
-inputBox.Size                   = UDim2.new(1, -40, 0, 42)
-inputBox.Position               = UDim2.new(0, 20, 0, 158)
-inputBox.BackgroundColor3       = COLORS.inputBg
-inputBox.TextColor3             = COLORS.text
-inputBox.PlaceholderColor3      = COLORS.textDim
-inputBox.PlaceholderText        = "XXXX-XXXX-XXXX-XXXX"
-inputBox.Text                   = ""
-inputBox.TextSize               = 15
-inputBox.Font                   = Enum.Font.GothamBold
-inputBox.ClearTextOnFocus       = false
-inputBox.TextXAlignment         = Enum.TextXAlignment.Center
-inputBox.BorderSizePixel        = 0
-inputBox.ZIndex                 = 3
-inputBox.Parent                 = panel
-makeCorner(inputBox, 8)
+inputBox.Size              = UDim2.new(1, -MARGIN * 2, 0, INPUT_H)
+inputBox.Position          = UDim2.new(0, MARGIN, 0, yPos)
+inputBox.BackgroundColor3  = COLORS.inputBg
+inputBox.TextColor3        = COLORS.text
+inputBox.PlaceholderColor3 = COLORS.textDim
+inputBox.PlaceholderText   = "XXXX-XXXX-XXXX-XXXX"
+inputBox.Text              = ""
+inputBox.TextSize          = sc(15)
+inputBox.Font              = Enum.Font.GothamBold
+inputBox.ClearTextOnFocus  = false
+inputBox.TextXAlignment    = Enum.TextXAlignment.Center
+inputBox.BorderSizePixel   = 0
+inputBox.ZIndex            = 3
+inputBox.Parent            = panel
+makeCorner(inputBox, sc(8))
 makeStroke(inputBox, COLORS.border, 1.5)
+yPos = yPos + INPUT_H + sc(8)
 
 -- Status label
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Size                   = UDim2.new(1, -40, 0, 36)
-statusLabel.Position               = UDim2.new(0, 20, 0, 208)
+statusLabel.Size                = UDim2.new(1, -MARGIN * 2, 0, sc(36))
+statusLabel.Position            = UDim2.new(0, MARGIN, 0, yPos)
 statusLabel.BackgroundTransparency = 1
-statusLabel.TextColor3             = COLORS.textDim
-statusLabel.TextSize               = 13
-statusLabel.Font                   = Enum.Font.Gotham
-statusLabel.TextXAlignment         = Enum.TextXAlignment.Center
-statusLabel.TextWrapped            = true
-statusLabel.Text                   = "Enter your key and press Validate."
-statusLabel.ZIndex                 = 3
-statusLabel.Parent                 = panel
+statusLabel.TextColor3          = COLORS.textDim
+statusLabel.TextSize            = sc(13)
+statusLabel.Font                = Enum.Font.Gotham
+statusLabel.TextXAlignment      = Enum.TextXAlignment.Center
+statusLabel.TextWrapped         = true
+statusLabel.Text                = "Enter your key and press Validate."
+statusLabel.ZIndex              = 3
+statusLabel.Parent              = panel
+yPos = yPos + sc(36) + sc(8)
 
 -- Validate button
 local validateBtn = Instance.new("TextButton")
-validateBtn.Size             = UDim2.new(1, -40, 0, 42)
-validateBtn.Position         = UDim2.new(0, 20, 0, 252)
+validateBtn.Size             = UDim2.new(1, -MARGIN * 2, 0, BTN_H)
+validateBtn.Position         = UDim2.new(0, MARGIN, 0, yPos)
 validateBtn.BackgroundColor3 = COLORS.accent
 validateBtn.TextColor3       = COLORS.white
-validateBtn.TextSize         = 15
+validateBtn.TextSize         = sc(15)
 validateBtn.Font             = Enum.Font.GothamBold
 validateBtn.Text             = "Validate Key"
 validateBtn.BorderSizePixel  = 0
 validateBtn.ZIndex           = 3
 validateBtn.Parent           = panel
-makeCorner(validateBtn, 8)
+makeCorner(validateBtn, sc(8))
 makeStroke(validateBtn, COLORS.border, 1.5)
+yPos = yPos + BTN_H + sc(14)
 
--- Store link button (left half)
+-- Bottom link buttons
+local linkW = math.floor((PANEL_W - MARGIN * 2 - sc(10)) / 2)
+
+-- Store link button (left)
 local storeBtn = Instance.new("TextButton")
-storeBtn.Size             = UDim2.new(0, 185, 0, 30)
-storeBtn.Position         = UDim2.new(0, 20, 0, 308)
+storeBtn.Size             = UDim2.new(0, linkW, 0, LINK_H)
+storeBtn.Position         = UDim2.new(0, MARGIN, 0, yPos)
 storeBtn.BackgroundColor3 = Color3.fromRGB(20, 28, 18)
 storeBtn.TextColor3       = COLORS.textDim
-storeBtn.TextSize         = 12
+storeBtn.TextSize         = sc(12)
 storeBtn.Font             = Enum.Font.Gotham
 storeBtn.Text             = "Get a Key →"
 storeBtn.BorderSizePixel  = 0
 storeBtn.ZIndex           = 3
 storeBtn.Parent           = panel
-makeCorner(storeBtn, 6)
+makeCorner(storeBtn, sc(6))
 makeStroke(storeBtn, COLORS.border, 1.5)
 
--- Discord link button (right half)
+-- Discord link button (right)
 local discordBtn = Instance.new("TextButton")
-discordBtn.Size             = UDim2.new(0, 185, 0, 30)
-discordBtn.Position         = UDim2.new(0, 215, 0, 308)
+discordBtn.Size             = UDim2.new(0, linkW, 0, LINK_H)
+discordBtn.Position         = UDim2.new(0, MARGIN + linkW + sc(10), 0, yPos)
 discordBtn.BackgroundColor3 = Color3.fromRGB(20, 28, 18)
 discordBtn.TextColor3       = COLORS.textDim
-discordBtn.TextSize         = 12
+discordBtn.TextSize         = sc(12)
 discordBtn.Font             = Enum.Font.Gotham
 discordBtn.Text             = "Discord →"
 discordBtn.BorderSizePixel  = 0
 discordBtn.ZIndex           = 3
 discordBtn.Parent           = panel
-makeCorner(discordBtn, 6)
+makeCorner(discordBtn, sc(6))
 makeStroke(discordBtn, COLORS.border, 1.5)
 
--- Close button (X) top-right — positioned fully inside the panel
+-- Close button (X) top-right
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0, 28, 0, 28)
-closeBtn.Position         = UDim2.new(0, 374, 0, 27)
+closeBtn.Size             = UDim2.new(0, sc(28), 0, sc(28))
+closeBtn.Position         = UDim2.new(0, PANEL_W - MARGIN - sc(28) + 2, 0, sc(27))
 closeBtn.BackgroundColor3 = Color3.fromRGB(26, 36, 24)
 closeBtn.TextColor3       = COLORS.textDim
-closeBtn.TextSize         = 14
+closeBtn.TextSize         = sc(14)
 closeBtn.Font             = Enum.Font.GothamBold
 closeBtn.Text             = "X"
 closeBtn.BorderSizePixel  = 0
 closeBtn.ZIndex           = 5
 closeBtn.Parent           = panel
-makeCorner(closeBtn, 6)
+makeCorner(closeBtn, sc(6))
 makeStroke(closeBtn, COLORS.border, 1.5)
 
 closeBtn.MouseEnter:Connect(function()
@@ -497,29 +553,27 @@ closeBtn.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- (dragging is handled directly on the panel below)
 
 -- ══════════════════════════════════════════════════════
---  PANEL ENTRANCE ANIMATION
+-- PANEL ENTRANCE ANIMATION
 -- ══════════════════════════════════════════════════════
 
-panel.Position = UDim2.new(0.5, 0, 0.5, 30)
+panel.Position           = UDim2.new(0.5, 0, 0.5, 30)
 panel.BackgroundTransparency = 1
 task.spawn(function()
     tween(panel, { Position = UDim2.new(0.5, 0, 0.5, 0), BackgroundTransparency = 0 }, 0.4)
 end)
 
+
 -- ══════════════════════════════════════════════════════
---  DRAGGING
+-- DRAGGING (supports both mouse and touch)
 -- ══════════════════════════════════════════════════════
 
-local UserInputService = game:GetService("UserInputService")
 local dragging, dragInput, dragStart, startPos
 
-local PANEL_W, PANEL_H = 420, 360
-
 panel.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
         dragging  = true
         dragStart = input.Position
         startPos  = panel.Position
@@ -532,7 +586,8 @@ panel.InputBegan:Connect(function(input)
 end)
 
 panel.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
 end)
@@ -540,22 +595,23 @@ end)
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
-        local vp    = game:GetService("Workspace").CurrentCamera.ViewportSize
+        local vp    = camera.ViewportSize
         local newX  = math.clamp(startPos.X.Offset + delta.X, PANEL_W / 2 - vp.X / 2, vp.X / 2 - PANEL_W / 2)
         local newY  = math.clamp(startPos.Y.Offset + delta.Y, PANEL_H / 2 - vp.Y / 2, vp.Y / 2 - PANEL_H / 2)
         panel.Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
     end
 end)
 
+
 -- ══════════════════════════════════════════════════════
---  GAME DETECTION (runs at startup)
+-- GAME DETECTION (runs at startup)
 -- ══════════════════════════════════════════════════════
 
 local detectedGameName, detectedScriptURL = detectGame()
 
 if detectedGameName then
     gameLabel.TextColor3 = COLORS.success
-    gameLabel.Text       = "Game detected:  " .. detectedGameName
+    gameLabel.Text       = "Game detected: " .. detectedGameName
 else
     gameLabel.TextColor3 = COLORS.warning
     gameLabel.Text       = "Game not supported (PlaceId: " .. tostring(game.PlaceId) .. ")"
@@ -564,8 +620,9 @@ else
     validateBtn.Active           = false
 end
 
+
 -- ══════════════════════════════════════════════════════
---  BUTTON INTERACTIONS
+-- BUTTON INTERACTIONS
 -- ══════════════════════════════════════════════════════
 
 local isValidating = false
@@ -599,36 +656,36 @@ end)
 storeBtn.MouseButton1Click:Connect(function()
     pcall(function() setclipboard(CONFIG.StoreURL) end)
     statusLabel.TextColor3 = COLORS.textDim
-    statusLabel.Text       = "Store link copied to clipboard!"
+    statusLabel.Text = "Store link copied to clipboard!"
 end)
 
 discordBtn.MouseButton1Click:Connect(function()
     pcall(function() setclipboard(CONFIG.DiscordURL) end)
     statusLabel.TextColor3 = COLORS.textDim
-    statusLabel.Text       = "Discord link copied to clipboard!"
+    statusLabel.Text = "Discord link copied to clipboard!"
 end)
 
+
 -- ══════════════════════════════════════════════════════
---  VALIDATE BUTTON LOGIC
+-- VALIDATE BUTTON LOGIC
 -- ══════════════════════════════════════════════════════
 
 local function onValidate()
     if isValidating then return end
     if not detectedGameName then return end
 
-    local key = inputBox.Text:match("^%s*(.-)%s*$")  -- trim whitespace
-
+    local key = inputBox.Text:match("^%s*(.-)%s*$") -- trim whitespace
     if key == "" then
         statusLabel.TextColor3 = COLORS.error
-        statusLabel.Text       = "Please enter a key."
+        statusLabel.Text = "Please enter a key."
         return
     end
 
     isValidating = true
-    validateBtn.Text             = "Validating..."
+    validateBtn.Text = "Validating..."
     validateBtn.BackgroundColor3 = Color3.fromRGB(40, 68, 28)
-    statusLabel.TextColor3       = COLORS.textDim
-    statusLabel.Text             = "Checking key with server..."
+    statusLabel.TextColor3 = COLORS.textDim
+    statusLabel.Text = "Checking key with server..."
 
     task.spawn(function()
         local valid, message = validateKey(key)
@@ -636,14 +693,15 @@ local function onValidate()
         if valid then
             -- Success — persist the key so the user isn't prompted next time
             saveKey(key)
+
             statusLabel.TextColor3 = COLORS.success
-            statusLabel.Text       = "Key accepted! Loading " .. detectedGameName .. "..."
-            validateBtn.Text             = "Loading..."
+            statusLabel.Text = "Key accepted! Loading " .. detectedGameName .. "..."
+            validateBtn.Text = "Loading..."
             validateBtn.BackgroundColor3 = COLORS.success
 
             -- Animate panel out
             task.wait(0.8)
-            tween(panel,   { Position = UDim2.new(0.5, 0, 0.5, -20), BackgroundTransparency = 1 }, 0.4)
+            tween(panel, { Position = UDim2.new(0.5, 0, 0.5, -20), BackgroundTransparency = 1 }, 0.4)
             tween(overlay, { BackgroundTransparency = 1 }, 0.5)
             task.wait(0.5)
             screenGui:Destroy()
@@ -657,9 +715,10 @@ local function onValidate()
         else
             -- Failure — clear any saved key so it doesn't auto-retry a bad/revoked key
             clearSavedKey()
-            statusLabel.TextColor3       = COLORS.error
-            statusLabel.Text             = message or "Invalid key."
-            validateBtn.Text             = "Validate Key"
+
+            statusLabel.TextColor3 = COLORS.error
+            statusLabel.Text = message or "Invalid key."
+            validateBtn.Text = "Validate Key"
             validateBtn.BackgroundColor3 = COLORS.accent
 
             -- Shake the input box
@@ -700,20 +759,22 @@ inputBox.FocusLost:Connect(function()
     end
 end)
 
+
 -- ══════════════════════════════════════════════════════
---  AUTO-LOGIN  (runs after GUI is built)
---  If a saved key exists, pre-fill and auto-validate
---  so the user skips the key screen entirely.
+-- AUTO-LOGIN (runs after GUI is built)
+-- If a saved key exists, pre-fill and auto-validate
+-- so the user skips the key screen entirely.
 -- ══════════════════════════════════════════════════════
 
 task.spawn(function()
     -- Small delay so the entrance animation plays first
     task.wait(0.6)
+
     local saved = loadSavedKey()
     if saved and saved ~= "" and detectedGameName then
-        inputBox.Text          = saved
+        inputBox.Text = saved
         statusLabel.TextColor3 = COLORS.textDim
-        statusLabel.Text       = "Remembered key found — validating..."
+        statusLabel.Text = "Remembered key found — validating..."
         task.wait(0.3)
         onValidate()
     end
