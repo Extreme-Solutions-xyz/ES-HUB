@@ -1416,11 +1416,23 @@ local function resolveChestOwner(obj)
     return owner
 end
 
+local function isVisibleChestPart(part)
+    return part
+        and part:IsA("BasePart")
+        and part:IsDescendantOf(Workspace)
+        and part.Transparency < 0.95
+        and part.LocalTransparencyModifier < 0.95
+        and part.Size.Magnitude > 0.1
+end
+
 local function resolveChestPart(obj)
-    if obj:IsA("Model") then
-        return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
+    if obj:IsA("BasePart") and isVisibleChestPart(obj) then return obj end
+    if obj:IsA("Model") and isVisibleChestPart(obj.PrimaryPart) then
+        return obj.PrimaryPart
     end
-    if obj:IsA("BasePart") then return obj end
+    for _, descendant in ipairs(obj:GetDescendants()) do
+        if isVisibleChestPart(descendant) then return descendant end
+    end
     return nil
 end
 
@@ -1497,10 +1509,29 @@ local ChestESPToggle = FruitTab:CreateToggle({
                                 S.ESP_ChestColor,
                                 S.ChestESPDistance
                             )
+                            local ownerRef = Instance.new("ObjectValue")
+                            ownerRef.Name = "ChestOwner"
+                            ownerRef.Value = chest.owner
+                            ownerRef.Parent = gui
                             table.insert(espObjects["chests"], gui)
                         end
                     end
-                    task.wait(5)
+                    -- Visibility changes are cheap to monitor and should feel immediate.
+                    for _ = 1, 20 do
+                        if not S.ChestESP or S.RuntimeId ~= runtimeId then break end
+                        task.wait(0.25)
+                        for _, gui in ipairs(espObjects["chests"] or {}) do
+                            if gui and gui.Parent then
+                                local ownerRef = gui:FindFirstChild("ChestOwner")
+                                local owner = ownerRef and ownerRef.Value
+                                local visiblePart = owner and owner.Parent
+                                    and resolveChestPart(owner)
+                                    or nil
+                                gui.Enabled = visiblePart ~= nil
+                                if visiblePart then gui.Adornee = visiblePart end
+                            end
+                        end
+                    end
                 end
                 clearESP("chests")
             end)

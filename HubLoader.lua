@@ -494,19 +494,27 @@ versionLabel.ZIndex                 = 5
 versionLabel.Parent                 = panel
 
 -- Close button (clean rounded, no sharp edges)
+local CLOSE_SIZE = math.max(sc(28), 24)
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size              = UDim2.new(0, sc(26), 0, sc(26))
-closeBtn.Position          = UDim2.new(0, PANEL_W - MARGIN - sc(26) + 4, 0, sc(14))
+closeBtn.AnchorPoint       = Vector2.new(1, 0)
+closeBtn.Size              = UDim2.new(0, CLOSE_SIZE, 0, CLOSE_SIZE)
+closeBtn.Position          = UDim2.new(1, -MARGIN, 0, sc(13))
 closeBtn.BackgroundColor3  = Color3.fromRGB(26, 36, 24)
 closeBtn.TextColor3        = C.textDim
 closeBtn.TextSize          = sc(12)
 closeBtn.Font              = Enum.Font.GothamBold
-closeBtn.Text              = "✕"
+closeBtn.Text              = "X"
+closeBtn.TextXAlignment    = Enum.TextXAlignment.Center
+closeBtn.TextYAlignment    = Enum.TextYAlignment.Center
 closeBtn.BorderSizePixel   = 0
 closeBtn.AutoButtonColor   = false
 closeBtn.ZIndex            = 6
 closeBtn.Parent            = panel
-makeCorner(closeBtn, sc(13)) -- fully round
+local closeCorner = makeCorner(closeBtn, CLOSE_SIZE / 2)
+closeCorner.CornerRadius = UDim.new(1, 0)
+local closeAspect = Instance.new("UIAspectRatioConstraint")
+closeAspect.AspectRatio = 1
+closeAspect.Parent = closeBtn
 makeStroke(closeBtn, C.border, 1)
 
 closeBtn.MouseEnter:Connect(function()
