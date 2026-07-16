@@ -99,10 +99,11 @@ local function corner(parent, radius)
     return c
 end
 
-local function stroke(parent, color, thickness)
+local function stroke(parent, color, thickness, transparency)
     local s = Instance.new("UIStroke")
     s.Color           = color or T.border
     s.Thickness       = thickness or 1
+    s.Transparency    = transparency or 0
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     s.Parent          = parent
     return s
@@ -290,14 +291,14 @@ function ESLib:CreateWindow(config)
     -- ── Shadow ───────────────────────────────────────
     local shadow = newFrame({
         AnchorPoint            = Vector2.new(0.5, 0.5),
-        Position               = UDim2.new(0.5, 3, 0.5, 5),
-        Size                   = UDim2.new(0, WIN_W + 14, 0, WIN_H + 14),
+        Position               = UDim2.new(0.5, 2, 0.5, 4),
+        Size                   = UDim2.new(0, WIN_W + 10, 0, WIN_H + 10),
         BackgroundColor3       = T.black,
-        BackgroundTransparency = 0.5,
+        BackgroundTransparency = 0.68,
         ZIndex                 = 1,
         Parent                 = gui,
     })
-    corner(shadow, 18)
+    corner(shadow, 17)
 
     -- ── Main window ───────────────────────────────────
     local win = newFrame({
@@ -315,13 +316,13 @@ function ESLib:CreateWindow(config)
     local borderOverlay = newFrame({
         AnchorPoint            = Vector2.new(0.5, 0.5),
         Position               = UDim2.new(0.5, 0, 0.5, 0),
-        Size                   = UDim2.new(0, WIN_W, 0, WIN_H),
+        Size                   = UDim2.new(0, WIN_W - 2, 0, WIN_H - 2),
         BackgroundTransparency = 1,
         ZIndex                 = 10,
         Parent                 = gui,
     })
-    corner(borderOverlay, 16)
-    stroke(borderOverlay, T.border, 1.5)
+    corner(borderOverlay, 15)
+    stroke(borderOverlay, T.border, 1, 0.08)
 
     -- ── Header ───────────────────────────────────────
     local header = newFrame({
@@ -495,7 +496,7 @@ function ESLib:CreateWindow(config)
                 local newX = math.clamp(startWin.X.Offset + d.X, WIN_W / 2 - vp.X / 2, vp.X / 2 - WIN_W / 2)
                 local newY = math.clamp(startWin.Y.Offset + d.Y, WIN_H / 2 - vp.Y / 2, vp.Y / 2 - WIN_H / 2)
                 win.Position           = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
-                shadow.Position        = UDim2.new(startShadow.X.Scale, newX + 3, startShadow.Y.Scale, newY + 5)
+                shadow.Position        = UDim2.new(startShadow.X.Scale, newX + 2, startShadow.Y.Scale, newY + 4)
                 borderOverlay.Position = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
             end
         end)
@@ -507,13 +508,13 @@ function ESLib:CreateWindow(config)
         minimised = not minimised
         if minimised then
             tw(win,           { Size = UDim2.new(0, WIN_W, 0, HEADER_H) }, 0.3)
-            tw(shadow,        { Size = UDim2.new(0, WIN_W + 14, 0, HEADER_H + 14) }, 0.3)
-            tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, HEADER_H) }, 0.3)
+            tw(shadow,        { Size = UDim2.new(0, WIN_W + 10, 0, HEADER_H + 10) }, 0.3)
+            tw(borderOverlay, { Size = UDim2.new(0, WIN_W - 2, 0, HEADER_H - 2) }, 0.3)
             minBtn.Text = "+"
         else
             tw(win,           { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.3, Enum.EasingStyle.Back)
-            tw(shadow,        { Size = UDim2.new(0, WIN_W + 14, 0, WIN_H + 14) }, 0.3, Enum.EasingStyle.Back)
-            tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.3, Enum.EasingStyle.Back)
+            tw(shadow,        { Size = UDim2.new(0, WIN_W + 10, 0, WIN_H + 10) }, 0.3, Enum.EasingStyle.Back)
+            tw(borderOverlay, { Size = UDim2.new(0, WIN_W - 2, 0, WIN_H - 2) }, 0.3, Enum.EasingStyle.Back)
             minBtn.Text = "-"
         end
     end)
@@ -533,20 +534,21 @@ function ESLib:CreateWindow(config)
             if gameProcessed then return end
             local k = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
             if k == keyStr then
-                win.Visible    = not win.Visible
-                shadow.Visible = win.Visible
+                win.Visible           = not win.Visible
+                shadow.Visible        = win.Visible
+                borderOverlay.Visible = win.Visible
             end
         end)
     end
 
     -- ── Entrance animation ────────────────────────────
     win.Size           = UDim2.new(0, WIN_W, 0, 0)
-    shadow.Size        = UDim2.new(0, WIN_W + 14, 0, 0)
-    borderOverlay.Size = UDim2.new(0, WIN_W, 0, 0)
+    shadow.Size        = UDim2.new(0, WIN_W + 10, 0, 0)
+    borderOverlay.Size = UDim2.new(0, WIN_W - 2, 0, 0)
     task.spawn(function()
         tw(win,           { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.45, Enum.EasingStyle.Back)
-        tw(shadow,        { Size = UDim2.new(0, WIN_W + 14, 0, WIN_H + 14) }, 0.45, Enum.EasingStyle.Back)
-        tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.45, Enum.EasingStyle.Back)
+        tw(shadow,        { Size = UDim2.new(0, WIN_W + 10, 0, WIN_H + 10) }, 0.45, Enum.EasingStyle.Back)
+        tw(borderOverlay, { Size = UDim2.new(0, WIN_W - 2, 0, WIN_H - 2) }, 0.45, Enum.EasingStyle.Back)
     end)
 
     -- ── Config state ──────────────────────────────────

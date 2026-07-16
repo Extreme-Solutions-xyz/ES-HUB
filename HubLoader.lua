@@ -331,23 +331,23 @@ overlay.Parent                 = screenGui
 local shadow = Instance.new("Frame")
 shadow.AnchorPoint       = Vector2.new(0.5, 0.5)
 shadow.Position          = UDim2.new(0.5, 0, 0.5, 4)
-shadow.Size              = UDim2.new(0, PANEL_W + 16, 0, PANEL_H + 16)
+shadow.Size              = UDim2.new(0, PANEL_W + 10, 0, PANEL_H + 10)
 shadow.BackgroundColor3  = C.glow
-shadow.BackgroundTransparency = 0.85
+shadow.BackgroundTransparency = 0.9
 shadow.BorderSizePixel   = 0
 shadow.ZIndex            = 1
 shadow.Parent            = screenGui
-makeCorner(shadow, sc(18))
+makeCorner(shadow, sc(16))
 
 -- Subtle glow pulse animation on shadow
 task.spawn(function()
     while shadow and shadow.Parent do
         TweenService:Create(shadow, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            BackgroundTransparency = 0.78
+            BackgroundTransparency = 0.84
         }):Play()
         task.wait(2)
         TweenService:Create(shadow, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            BackgroundTransparency = 0.9
+            BackgroundTransparency = 0.93
         }):Play()
         task.wait(2)
     end
@@ -364,7 +364,7 @@ panel.ClipsDescendants  = true  -- KEY: clips the header so no sharp edges poke 
 panel.ZIndex            = 2
 panel.Parent            = screenGui
 makeCorner(panel, sc(14))
-local panelStroke = makeStroke(panel, C.border, 1.5)
+local panelStroke = makeStroke(panel, C.border, 1)
 
 -- ── Subtle gradient overlay on panel for depth ──
 local panelSheen = Instance.new("Frame")
@@ -650,7 +650,7 @@ end
 
 task.spawn(function()
     tw(panel, { Position = UDim2.new(0.5, 0, 0.5, 0), BackgroundTransparency = 0 }, 0.5, Enum.EasingStyle.Back)
-    tw(shadow, { BackgroundTransparency = 0.85 }, 0.5)
+    tw(shadow, { BackgroundTransparency = 0.9 }, 0.5)
     tw(panelStroke, { Transparency = 0 }, 0.4)
     task.wait(0.1)
     showAll(panel, 0.35)
