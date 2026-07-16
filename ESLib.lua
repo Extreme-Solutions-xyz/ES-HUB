@@ -209,6 +209,9 @@ end
 --  NOTIFICATION SYSTEM
 -- ══════════════════════════════════════════════════════
 
+local previousNotifGui = PlayerGui:FindFirstChild("ESNotifications")
+if previousNotifGui then previousNotifGui:Destroy() end
+
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name           = "ESNotifications"
 notifGui.ResetOnSpawn   = false
@@ -372,6 +375,9 @@ function ESLib:CreateWindow(config)
     config = config or {}
 
     -- ── ScreenGui ────────────────────────────────────
+    local previousWindowGui = PlayerGui:FindFirstChild("ESHub")
+    if previousWindowGui then previousWindowGui:Destroy() end
+
     local gui = Instance.new("ScreenGui")
     gui.Name            = "ESHub"
     gui.ResetOnSpawn    = false
@@ -638,39 +644,160 @@ function ESLib:CreateWindow(config)
         Parent           = contentArea,
     })
 
-    -- ── Drag (header + sidebar only — prevents sliders triggering window move) ───
+    -- A compact launcher replaces the old full-width minimised header.
+    local LAUNCHER_SIZE = 58
+    local launcherGroup = newFrame({
+        Size                   = UDim2.new(0, LAUNCHER_SIZE, 0, LAUNCHER_SIZE),
+        Position               = UDim2.new(0, 16, 0, 16),
+        BackgroundTransparency = 1,
+        Visible                = false,
+        ZIndex                 = 20,
+        Parent                 = gui,
+    })
+    local launcherScale = Instance.new("UIScale")
+    launcherScale.Scale = 1
+    launcherScale.Parent = launcherGroup
+
+    local launcherGlow = newFrame({
+        Size                   = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ZIndex                 = 20,
+        Parent                 = launcherGroup,
+    })
+    corner(launcherGlow, LAUNCHER_SIZE / 2)
+    local launcherGlowStroke = stroke(launcherGlow, T.accent, 4, 0.82)
+
+    local launcherButton = Instance.new("ImageButton")
+    launcherButton.Size                   = UDim2.new(0, 50, 0, 50)
+    launcherButton.Position               = UDim2.new(0.5, -25, 0.5, -25)
+    launcherButton.BackgroundColor3       = T.bg
+    launcherButton.BorderSizePixel        = 0
+    launcherButton.AutoButtonColor        = false
+    launcherButton.Image                  = ""
+    launcherButton.Active                 = true
+    launcherButton.ZIndex                 = 21
+    launcherButton.Parent                 = launcherGroup
+    corner(launcherButton, 25)
+    local launcherBorder = stroke(launcherButton, T.borderHov, 1, 0.12)
+
+    local launcherLogo = Instance.new("ImageLabel")
+    launcherLogo.Size                   = UDim2.new(0, 32, 0, 32)
+    launcherLogo.Position               = UDim2.new(0.5, -16, 0.5, -16)
+    launcherLogo.BackgroundTransparency = 1
+    launcherLogo.Image                  = LOGO_ASSET
+    launcherLogo.ScaleType              = Enum.ScaleType.Fit
+    launcherLogo.ZIndex                 = 22
+    launcherLogo.Parent                 = launcherButton
+
+    local mainChrome = {
+        win, shadow, outerGlow, middleGlow, innerGlow, borderOverlay,
+    }
+    local function setMainVisible(visible)
+        for _, object in ipairs(mainChrome) do object.Visible = visible end
+    end
+
+    local function launcherBounds(x, y)
+        local viewport = game:GetService("Workspace").CurrentCamera.ViewportSize
+        local margin = 10
+        return math.clamp(x, margin, math.max(margin, viewport.X - LAUNCHER_SIZE - margin)),
+               math.clamp(y, margin, math.max(margin, viewport.Y - LAUNCHER_SIZE - margin))
+    end
+
+    local launcherPlaced = false
+    local minimised = false
+
+    game:GetService("Workspace").CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+        if not gui.Parent or not launcherPlaced then return end
+        local x, y = launcherBounds(
+            launcherGroup.Position.X.Offset,
+            launcherGroup.Position.Y.Offset
+        )
+        launcherGroup.Position = UDim2.fromOffset(x, y)
+    end)
+
+    local function showLauncher()
+        if not launcherPlaced then
+            local centre = win.AbsolutePosition + (win.AbsoluteSize / 2)
+            local x, y = launcherBounds(
+                centre.X - (LAUNCHER_SIZE / 2),
+                centre.Y - (LAUNCHER_SIZE / 2)
+            )
+            launcherGroup.Position = UDim2.fromOffset(x, y)
+            launcherPlaced = true
+        end
+        setMainVisible(false)
+        launcherScale.Scale = 0.78
+        launcherGroup.Visible = true
+        tw(launcherScale, { Scale = 1 }, 0.2, Enum.EasingStyle.Back)
+    end
+
+    local function restoreFromLauncher()
+        minimised = false
+        launcherGroup.Visible = false
+        launcherScale.Scale = 1
+        setMainVisible(true)
+    end
+
+    launcherButton.MouseEnter:Connect(function()
+        tw(launcherButton, { BackgroundColor3 = T.card }, 0.15)
+        tw(launcherBorder, { Color = T.accent }, 0.15)
+    end)
+    launcherButton.MouseLeave:Connect(function()
+        tw(launcherButton, { BackgroundColor3 = T.bg }, 0.15)
+        tw(launcherBorder, { Color = T.borderHov }, 0.15)
+    end)
+
+    -- Drag (header + sidebar only — prevents sliders triggering window move).
     do
-        local dragging, dragInput, dragStart, startWin, startShadow
+        local dragging, dragPointer, dragType, dragStart, startWin
+
+        local function axisBounds(viewportSize, windowSize)
+            local margin = 10
+            if windowSize + (margin * 2) <= viewportSize then
+                return (windowSize / 2) - (viewportSize / 2) + margin,
+                       (viewportSize / 2) - (windowSize / 2) - margin
+            end
+            local grip = 64
+            return grip - (windowSize / 2) - (viewportSize / 2),
+                   (viewportSize / 2) + (windowSize / 2) - grip
+        end
 
         local function onDragBegan(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local inputType = input.UserInputType
+            if inputType == Enum.UserInputType.MouseButton1
+            or inputType == Enum.UserInputType.Touch then
                 dragging    = true
+                dragPointer  = input
+                dragType     = inputType
                 dragStart   = input.Position
                 startWin    = win.Position
-                startShadow = shadow.Position
                 input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then dragging = false end
+                    if input.UserInputState == Enum.UserInputState.End and dragPointer == input then
+                        dragging = false
+                        dragPointer = nil
+                        dragType = nil
+                    end
                 end)
             end
-        end
-        local function onDragMoved(input)
-            if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
         end
 
         -- Only header and sidebar are drag handles — content area (sliders etc.) is excluded
         header.InputBegan:Connect(onDragBegan)
         sidebar.InputBegan:Connect(onDragBegan)
-        header.InputChanged:Connect(onDragMoved)
-        sidebar.InputChanged:Connect(onDragMoved)
 
         UIS.InputChanged:Connect(function(input)
-            if input == dragInput and dragging then
+            local isMouseMove = dragType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseMovement
+            local isTouchMove = dragType == Enum.UserInputType.Touch and input == dragPointer
+            if dragging and (isMouseMove or isTouchMove) then
                 local d    = input.Position - dragStart
                 local vp   = game:GetService("Workspace").CurrentCamera.ViewportSize
-                local newX = math.clamp(startWin.X.Offset + d.X, WIN_W / 2 - vp.X / 2, vp.X / 2 - WIN_W / 2)
-                local newY = math.clamp(startWin.Y.Offset + d.Y, WIN_H / 2 - vp.Y / 2, vp.Y / 2 - WIN_H / 2)
+                local minX, maxX = axisBounds(vp.X, WIN_W)
+                local minY, maxY = axisBounds(vp.Y, WIN_H)
+                local newX = math.clamp(startWin.X.Offset + d.X, minX, maxX)
+                local newY = math.clamp(startWin.Y.Offset + d.Y, minY, maxY)
                 win.Position           = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
-                shadow.Position        = UDim2.new(startShadow.X.Scale, newX,     startShadow.Y.Scale, newY + 4)
+                shadow.Position        = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY + 4)
                 outerGlow.Position     = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
                 middleGlow.Position    = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
                 innerGlow.Position     = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
@@ -679,27 +806,54 @@ function ESLib:CreateWindow(config)
         end)
     end
 
-    -- ── Minimize / Close ──────────────────────────────
-    local minimised = false
+    -- The launcher distinguishes a click from a drag, so repositioning never opens it.
+    do
+        local dragging, dragPointer, dragType, dragStart, startPosition, moved
+
+        launcherButton.InputBegan:Connect(function(input)
+            local inputType = input.UserInputType
+            if inputType ~= Enum.UserInputType.MouseButton1
+            and inputType ~= Enum.UserInputType.Touch then return end
+
+            dragging = true
+            dragPointer = input
+            dragType = inputType
+            dragStart = input.Position
+            startPosition = launcherGroup.Position
+            moved = false
+
+            input.Changed:Connect(function()
+                if input.UserInputState ~= Enum.UserInputState.End or dragPointer ~= input then return end
+                local wasMoved = moved
+                dragging = false
+                dragPointer = nil
+                dragType = nil
+                if not wasMoved then task.defer(restoreFromLauncher) end
+            end)
+        end)
+
+        UIS.InputChanged:Connect(function(input)
+            local isMouseMove = dragType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseMovement
+            local isTouchMove = dragType == Enum.UserInputType.Touch and input == dragPointer
+            if not dragging or not (isMouseMove or isTouchMove) then return end
+
+            local delta = input.Position - dragStart
+            if delta.Magnitude >= 6 then moved = true end
+            if not moved then return end
+
+            local x, y = launcherBounds(
+                startPosition.X.Offset + delta.X,
+                startPosition.Y.Offset + delta.Y
+            )
+            launcherGroup.Position = UDim2.fromOffset(x, y)
+        end)
+    end
+
+    -- Minimize / Close
     minBtn.MouseButton1Click:Connect(function()
-        minimised = not minimised
-        if minimised then
-            tw(win,           { Size = UDim2.new(0, WIN_W, 0, HEADER_H) }, 0.3)
-            tw(shadow,        { Size = UDim2.new(0, WIN_W + 10, 0, HEADER_H + 10) }, 0.3)
-            tw(outerGlow,     { Size = UDim2.new(0, WIN_W + 14, 0, HEADER_H + 14) }, 0.3)
-            tw(middleGlow,    { Size = UDim2.new(0, WIN_W + 7, 0, HEADER_H + 7) }, 0.3)
-            tw(innerGlow,     { Size = UDim2.new(0, WIN_W + 2, 0, HEADER_H + 2) }, 0.3)
-            tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, HEADER_H) }, 0.3)
-            minBtn.Text = "+"
-        else
-            tw(win,           { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.3, Enum.EasingStyle.Back)
-            tw(shadow,        { Size = UDim2.new(0, WIN_W + 10, 0, WIN_H + 10) }, 0.3, Enum.EasingStyle.Back)
-            tw(outerGlow,     { Size = UDim2.new(0, WIN_W + 14, 0, WIN_H + 14) }, 0.3, Enum.EasingStyle.Back)
-            tw(middleGlow,    { Size = UDim2.new(0, WIN_W + 7, 0, WIN_H + 7) }, 0.3, Enum.EasingStyle.Back)
-            tw(innerGlow,     { Size = UDim2.new(0, WIN_W + 2, 0, WIN_H + 2) }, 0.3, Enum.EasingStyle.Back)
-            tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.3, Enum.EasingStyle.Back)
-            minBtn.Text = "-"
-        end
+        minimised = true
+        showLauncher()
     end)
     closeBtn.MouseButton1Click:Connect(function()
         tw(win,           { Size = UDim2.new(0, WIN_W, 0, 0), BackgroundTransparency = 1 }, 0.25)
@@ -720,12 +874,11 @@ function ESLib:CreateWindow(config)
             if gameProcessed then return end
             local k = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
             if k == keyStr then
-                win.Visible           = not win.Visible
-                shadow.Visible        = win.Visible
-                outerGlow.Visible     = win.Visible
-                middleGlow.Visible    = win.Visible
-                innerGlow.Visible     = win.Visible
-                borderOverlay.Visible = win.Visible
+                if minimised then
+                    restoreFromLauncher()
+                else
+                    setMainVisible(not win.Visible)
+                end
             end
         end)
     end
@@ -753,18 +906,22 @@ function ESLib:CreateWindow(config)
             local brightenOuter = TweenService:Create(outerGlowStroke, breatheInfo, { Transparency = 0.86 })
             local brightenMiddle = TweenService:Create(middleGlowStroke, breatheInfo, { Transparency = 0.7 })
             local brightenInner = TweenService:Create(innerGlowStroke, breatheInfo, { Transparency = 0.4 })
+            local brightenLauncher = TweenService:Create(launcherGlowStroke, breatheInfo, { Transparency = 0.68 })
             brightenOuter:Play()
             brightenMiddle:Play()
             brightenInner:Play()
+            brightenLauncher:Play()
             brightenInner.Completed:Wait()
             if not gui.Parent then break end
 
             local dimOuter = TweenService:Create(outerGlowStroke, breatheInfo, { Transparency = 0.97 })
             local dimMiddle = TweenService:Create(middleGlowStroke, breatheInfo, { Transparency = 0.91 })
             local dimInner = TweenService:Create(innerGlowStroke, breatheInfo, { Transparency = 0.7 })
+            local dimLauncher = TweenService:Create(launcherGlowStroke, breatheInfo, { Transparency = 0.86 })
             dimOuter:Play()
             dimMiddle:Play()
             dimInner:Play()
+            dimLauncher:Play()
             dimInner.Completed:Wait()
         end
     end)
@@ -774,13 +931,36 @@ function ESLib:CreateWindow(config)
     local cfgFile     = (config.ConfigurationSaving and config.ConfigurationSaving.FileName)   or "config"
     local savedValues = {}
     local flagCbs     = {}
+    local toggleFlags = {}
+    local saveToggles = config.ConfigurationSaving
+        and config.ConfigurationSaving.SaveToggles == true
+    local configurationLoaded = false
+    local sessionOnlyFlags = {}
+    for _, flag in ipairs(
+        (config.ConfigurationSaving and config.ConfigurationSaving.SessionOnlyFlags) or {}
+    ) do
+        sessionOnlyFlags[flag] = true
+    end
+
+    local function persistentValues()
+        local data = {}
+        for flag, value in pairs(savedValues) do
+            if not sessionOnlyFlags[flag]
+            and (saveToggles or not toggleFlags[flag]) then
+                data[flag] = value
+            end
+        end
+        return data
+    end
 
     -- Auto-save every 12s
     if config.ConfigurationSaving and config.ConfigurationSaving.Enabled then
         task.spawn(function()
             while gui.Parent do
                 task.wait(12)
-                saveConfig(cfgFolder, cfgFile, savedValues)
+                if configurationLoaded then
+                    saveConfig(cfgFolder, cfgFile, persistentValues())
+                end
             end
         end)
     end
@@ -980,7 +1160,7 @@ function ESLib:CreateWindow(config)
                 tw(pill, { BackgroundColor3 = v and T.toggleOn or T.toggleOff }, 0.18)
                 tw(knob, { Position = v and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8) }, 0.18)
                 if fire and cfg.Callback then cfg.Callback(v) end
-                if cfg.Flag then savedValues[cfg.Flag] = v end
+                if cfg.Flag and saveToggles then savedValues[cfg.Flag] = v end
             end
 
             local hitbox = newBtn({
@@ -993,7 +1173,10 @@ function ESLib:CreateWindow(config)
             hitbox.MouseButton1Click:Connect(function() apply(not val, true) end)
 
             function toggleObj:Set(v) apply(v, false) end
-            if cfg.Flag then flagCbs[cfg.Flag] = function(v) apply(v, false) end end
+            if cfg.Flag then
+                toggleFlags[cfg.Flag] = true
+                flagCbs[cfg.Flag] = function(v) apply(v, true) end
+            end
 
             return toggleObj
         end
@@ -1104,7 +1287,7 @@ function ESLib:CreateWindow(config)
             end)
 
             function sliderObj:Set(v) setVal(v, false) end
-            if cfg.Flag then flagCbs[cfg.Flag] = function(v) setVal(v, false) end end
+            if cfg.Flag then flagCbs[cfg.Flag] = function(v) setVal(v, true) end end
 
             return sliderObj
         end
@@ -1400,12 +1583,16 @@ function ESLib:CreateWindow(config)
                 if isOpen then closeDD() else isOpen = true; tw(chevron, { Rotation = 180 }, 0.15); openDD() end
             end)
 
-            function dropObj:Set(opt) cur = opt; curLbl.Text = opt end
+            function dropObj:Set(opt, fire)
+                cur = opt
+                curLbl.Text = opt
+                if fire and cfg.Callback then cfg.Callback(opt) end
+            end
             function dropObj:Refresh(newOpts)
                 options = newOpts
                 if isOpen then closeDD(); task.wait(0.2); openDD() end
             end
-            if cfg.Flag then flagCbs[cfg.Flag] = function(v) dropObj:Set(v) end end
+            if cfg.Flag then flagCbs[cfg.Flag] = function(v) dropObj:Set(v, true) end end
 
             return dropObj
         end
@@ -1583,8 +1770,11 @@ function ESLib:CreateWindow(config)
             end)
 
             local inputObj = {}
-            function inputObj:Set(v) box.Text = v end
-            if cfg.Flag then flagCbs[cfg.Flag] = function(v) inputObj:Set(v) end end
+            function inputObj:Set(v, fire)
+                box.Text = v
+                if fire and cfg.Callback then cfg.Callback(v) end
+            end
+            if cfg.Flag then flagCbs[cfg.Flag] = function(v) inputObj:Set(v, true) end end
             return inputObj
         end
 
@@ -1669,9 +1859,15 @@ function ESLib:CreateWindow(config)
         if not (config.ConfigurationSaving and config.ConfigurationSaving.Enabled) then return end
         local data = loadCfg(cfgFolder, cfgFile)
         for flag, val in pairs(data) do
-            savedValues[flag] = val
-            if flagCbs[flag] then pcall(flagCbs[flag], val) end
+            if not sessionOnlyFlags[flag]
+            and (saveToggles or not toggleFlags[flag]) then
+                savedValues[flag] = val
+                if flagCbs[flag] then pcall(flagCbs[flag], val) end
+            end
         end
+        configurationLoaded = true
+        -- Rewriting removes legacy action-toggle values from older configs.
+        if not saveToggles then saveConfig(cfgFolder, cfgFile, persistentValues()) end
     end
 
     return Window

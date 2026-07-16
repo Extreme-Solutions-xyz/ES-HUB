@@ -14,9 +14,17 @@ local Window = ESLib:CreateWindow({
     Name            = "Extreme Solutions | Blox Fruits",
     ToggleUIKeybind = "K",
     ConfigurationSaving = {
-        Enabled    = true,
-        FolderName = "ExtremeSolutions",
-        FileName   = "BloxFruitsHub"
+        Enabled     = true,
+        SaveToggles = false,
+        FolderName  = "ExtremeSolutions",
+        FileName    = "BloxFruitsHub",
+        SessionOnlyFlags = {
+            "SpeedSlider",
+            "JumpSlider",
+            "TimeOfDay",
+            "FOV",
+            "CamZoom",
+        },
     },
 })
 
@@ -126,7 +134,10 @@ local function disconnectKey(key)
     end
 end
 
+local loadingConfiguration = false
+
 local function notify(title, content, _type)
+    if loadingConfiguration then return end
     Window:Notify({
         Title    = title,
         Content  = content,
@@ -1913,6 +1924,8 @@ end
 --  LOAD CONFIG
 -- ══════════════════════════════════════════════════════
 
+loadingConfiguration = true
 Window:LoadConfiguration()
+loadingConfiguration = false
 
 notify("Extreme Solutions", "Blox Fruits Hub loaded!  Press K to toggle the menu.", "success")
