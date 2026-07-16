@@ -51,6 +51,8 @@ local MiscTab     = Window:CreateTab("Misc",       "settings")
 
 getgenv().BF = getgenv().BF or {}
 local S = getgenv().BF
+local runtimeId = HttpService:GenerateGUID(false)
+S.RuntimeId = runtimeId
 
 -- Movement
 S.SpeedValue       = 16
@@ -97,6 +99,13 @@ S.AntiAFK          = false
 
 local connections = {}
 local espObjects  = {}
+
+-- Remove markers left behind by an older execution before starting this runtime.
+for _, obj in ipairs(Workspace:GetDescendants()) do
+    if obj:IsA("BillboardGui") and obj.Name == "ESHubESP" then
+        pcall(function() obj:Destroy() end)
+    end
+end
 
 -- ══════════════════════════════════════════════════════
 --  CORE HELPERS
@@ -558,6 +567,18 @@ local function makeESPBase(adornee, width, height, offsetY, maxDistance, color)
     shadow.Parent = bb
     espCorner(shadow, 10)
 
+    local glow = Instance.new("Frame")
+    glow.Name = "Glow"
+    glow.Size = UDim2.new(1, 4, 1, 4)
+    glow.Position = UDim2.new(0, -2, 0, -2)
+    glow.BackgroundTransparency = 1
+    glow.BorderSizePixel = 0
+    glow.ZIndex = 1
+    glow.Parent = bb
+    espCorner(glow, 11)
+    local glowStroke = espStroke(glow, color, 2, 0.7)
+    glowStroke.Name = "GlowStroke"
+
     local frame = Instance.new("Frame")
     frame.Name = "Card"
     frame.Size = UDim2.new(1, 0, 1, 0)
@@ -570,21 +591,11 @@ local function makeESPBase(adornee, width, height, offsetY, maxDistance, color)
     espCorner(frame, 9)
     local border = espStroke(frame, ESP_THEME.border, 1, 0.08)
 
-    local accent = Instance.new("Frame")
-    accent.Name = "Accent"
-    accent.Size = UDim2.new(1, -16, 0, 2)
-    accent.Position = UDim2.new(0, 8, 0, 1)
-    accent.BackgroundColor3 = color
-    accent.BorderSizePixel = 0
-    accent.ZIndex = 4
-    accent.Parent = frame
-    espCorner(accent, 1)
-
-    return bb, frame, accent, border
+    return bb, frame, glowStroke, border
 end
 
 local function makeObjectESPGui(adornee, title, category, distance, color, maxDistance)
-    local bb, frame, accent, border = makeESPBase(adornee, 150, 46, 3.2, maxDistance, color)
+    local bb, frame, glow, border = makeESPBase(adornee, 150, 46, 3.2, maxDistance, color)
     local titleLabel = espLabel(frame, {
         Size = UDim2.new(1, -16, 0, 17),
         Position = UDim2.new(0, 8, 0, 6),
@@ -608,7 +619,7 @@ local function makeObjectESPGui(adornee, title, category, distance, color, maxDi
     return bb, {
         gui = bb,
         frame = frame,
-        accent = accent,
+        glow = glow,
         border = border,
         title = titleLabel,
         detail = detailLabel,
@@ -616,7 +627,7 @@ local function makeObjectESPGui(adornee, title, category, distance, color, maxDi
 end
 
 local function makePlayerESPGui(adornee, color, maxDistance)
-    local bb, frame, accent, border = makeESPBase(adornee, 176, 58, 3.8, maxDistance, color)
+    local bb, frame, glow, border = makeESPBase(adornee, 176, 58, 3.8, maxDistance, color)
     local titleLabel = espLabel(frame, {
         Size = UDim2.new(1, -16, 0, 17),
         Position = UDim2.new(0, 8, 0, 6),
@@ -656,7 +667,7 @@ local function makePlayerESPGui(adornee, color, maxDistance)
     return {
         gui = bb,
         frame = frame,
-        accent = accent,
+        glow = glow,
         border = border,
         title = titleLabel,
         detail = detailLabel,
@@ -1267,7 +1278,7 @@ local function updatePlayerESP(entry, p, hum, dist)
 
     entry.title.Text = displayName
     entry.title.TextColor3 = S.ESP_PlayerColor
-    entry.accent.BackgroundColor3 = S.ESP_PlayerColor
+    entry.glow.Color = S.ESP_PlayerColor
     entry.detail.Text = "HP " .. health .. " / " .. maxHealth
         .. (S.ESP_ShowDist and ("  |  " .. dist .. " studs") or "")
     entry.healthFill.Size = UDim2.new(ratio, 0, 1, 0)
@@ -1352,12 +1363,103 @@ FruitTab:CreateSlider({
 
 FruitTab:CreateSection("Chest ESP")
 
+local CHEST_TYPES = {
+    chest1        = { label = "Silver Chest",   priority = 2 },
+    chest2        = { label = "Gold Chest",     priority = 2 },
+    chest3        = { label = "Diamond Chest",  priority = 2 },
+    silverchest   = { label = "Silver Chest",   priority = 3 },
+    goldchest     = { label = "Gold Chest",     priority = 3 },
+    diamondchest  = { label = "Diamond Chest",  priority = 3 },
+    treasurechest = { label = "Treasure Chest", priority = 3 },
+}
+
+local function normaliseChestName(name)
+    return name:lower():gsub("[%s_%-]", "")
+end
+
+local function getChestInfo(obj)
+    if not (obj:IsA("Model") or obj:IsA("BasePart")) then return nil end
+
+    local normalised = normaliseChestName(obj.Name)
+    local known = CHEST_TYPES[normalised]
+    if known then return known end
+    if not normalised:find("chest", 1, true)
+    and not normalised:find("treasure", 1, true) then
+        return nil
+    end
+
+    local label = obj.Name:gsub("_", " "):gsub("(%l)(%u)", "%1 %2")
+    return { label = label, priority = 1 }
+end
+
+local function resolveChestOwner(obj)
+    local owner = obj
+    local ancestor = obj.Parent
+    while ancestor and ancestor ~= Workspace do
+        if (ancestor:IsA("Model") or ancestor:IsA("BasePart"))
+        and CHEST_TYPES[normaliseChestName(ancestor.Name)] then
+            owner = ancestor
+        end
+        ancestor = ancestor.Parent
+    end
+    return owner
+end
+
 local function resolveChestPart(obj)
     if obj:IsA("Model") then
-        return obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+        return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
     end
     if obj:IsA("BasePart") then return obj end
     return nil
+end
+
+local function scanChests(myRoot)
+    local candidates = {}
+    local seenOwners = {}
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        local info = getChestInfo(obj)
+        if info then
+            local owner = resolveChestOwner(obj)
+            local part = resolveChestPart(owner)
+            if part and part.Parent and not seenOwners[owner] then
+                seenOwners[owner] = true
+                local dist = math.floor((myRoot.Position - part.Position).Magnitude)
+                if dist <= S.ChestESPDistance then
+                    local ownerInfo = getChestInfo(owner) or info
+                    table.insert(candidates, {
+                        owner = owner,
+                        part = part,
+                        label = ownerInfo.label,
+                        priority = math.max(info.priority, ownerInfo.priority),
+                        distance = dist,
+                    })
+                end
+            end
+        end
+    end
+
+    table.sort(candidates, function(a, b)
+        if a.priority ~= b.priority then return a.priority > b.priority end
+        return a.distance < b.distance
+    end)
+
+    local unique = {}
+    for _, candidate in ipairs(candidates) do
+        local duplicate = false
+        for _, accepted in ipairs(unique) do
+            local sameHierarchy = candidate.owner:IsDescendantOf(accepted.owner)
+                or accepted.owner:IsDescendantOf(candidate.owner)
+            local samePosition = (candidate.part.Position - accepted.part.Position).Magnitude <= 4
+            if sameHierarchy or samePosition then
+                duplicate = true
+                break
+            end
+        end
+        if not duplicate then table.insert(unique, candidate) end
+    end
+
+    return unique
 end
 
 local ChestESPToggle = FruitTab:CreateToggle({
@@ -1371,33 +1473,20 @@ local ChestESPToggle = FruitTab:CreateToggle({
 
         if v then
             task.spawn(function()
-                while S.ChestESP do
+                while S.ChestESP and S.RuntimeId == runtimeId do
                     clearESP("chests")
                     local myRoot = getRoot()
-                    local seenParts = {}
-                    for _, obj in ipairs(Workspace:GetDescendants()) do
-                        local name = obj.Name:lower()
-                        local isChest = name:find("chest", 1, true)
-                            or name:find("treasure", 1, true)
-                        if isChest then
-                            local part = resolveChestPart(obj)
-                            if part and part.Parent and not seenParts[part] and myRoot then
-                                seenParts[part] = true
-                                local dist = myRoot
-                                    and math.floor((myRoot.Position - part.Position).Magnitude)
-                                    or 0
-                                if dist <= S.ChestESPDistance then
-                                    local gui = makeObjectESPGui(
-                                        part,
-                                        obj.Name:gsub("_", " "),
-                                        "CHEST",
-                                        dist,
-                                        S.ESP_ChestColor,
-                                        S.ChestESPDistance
-                                    )
-                                    table.insert(espObjects["chests"], gui)
-                                end
-                            end
+                    if myRoot then
+                        for _, chest in ipairs(scanChests(myRoot)) do
+                            local gui = makeObjectESPGui(
+                                chest.part,
+                                chest.label,
+                                "CHEST",
+                                chest.distance,
+                                S.ESP_ChestColor,
+                                S.ChestESPDistance
+                            )
+                            table.insert(espObjects["chests"], gui)
                         end
                     end
                     task.wait(5)
@@ -1569,12 +1658,13 @@ MiscTab:CreateDropdown({
         S.ESP_FruitColor = colorMap[c] or Color3.fromRGB(255,80,80)
         for _, gui in ipairs(espObjects["fruits"] or {}) do
             local card = gui and gui:FindFirstChild("Card")
+            local glow = gui and gui:FindFirstChild("Glow")
             if card then
-                local accent = card:FindFirstChild("Accent")
                 local detail = card:FindFirstChild("Detail")
-                if accent then accent.BackgroundColor3 = S.ESP_FruitColor end
                 if detail then detail.TextColor3 = S.ESP_FruitColor end
             end
+            local glowStroke = glow and glow:FindFirstChild("GlowStroke")
+            if glowStroke then glowStroke.Color = S.ESP_FruitColor end
         end
         notify("ESP Color", "Fruit ESP color set to " .. tostring(c))
     end
@@ -1590,7 +1680,7 @@ MiscTab:CreateDropdown({
         S.ESP_PlayerColor = colorMap[c] or Color3.fromRGB(80,200,255)
         for _, entry in pairs(playerESPLabels) do
             entry.title.TextColor3 = S.ESP_PlayerColor
-            entry.accent.BackgroundColor3 = S.ESP_PlayerColor
+            entry.glow.Color = S.ESP_PlayerColor
         end
         notify("ESP Color", "Player ESP color set to " .. tostring(c))
     end
@@ -1606,12 +1696,13 @@ MiscTab:CreateDropdown({
         S.ESP_ChestColor = colorMap[c] or Color3.fromRGB(255,215,0)
         for _, gui in ipairs(espObjects["chests"] or {}) do
             local card = gui and gui:FindFirstChild("Card")
+            local glow = gui and gui:FindFirstChild("Glow")
             if card then
-                local accent = card:FindFirstChild("Accent")
                 local detail = card:FindFirstChild("Detail")
-                if accent then accent.BackgroundColor3 = S.ESP_ChestColor end
                 if detail then detail.TextColor3 = S.ESP_ChestColor end
             end
+            local glowStroke = glow and glow:FindFirstChild("GlowStroke")
+            if glowStroke then glowStroke.Color = S.ESP_ChestColor end
         end
         notify("ESP Color", "Chest ESP color set to " .. tostring(c))
     end
