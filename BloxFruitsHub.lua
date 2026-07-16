@@ -88,6 +88,8 @@ S.ESP_ChestColor   = Color3.fromRGB(255, 215, 0)
 S.ESP_TextSize     = 14
 S.ESP_BgTransp     = 0.45
 S.ESP_ShowDist     = true
+S.PlayerESPDistance = S.PlayerESPDistance or 2500
+S.ChestESPDistance  = S.ChestESPDistance or 3000
 
 -- Misc
 S.FullBright       = false
@@ -491,45 +493,175 @@ end
 --  ESP HELPERS
 -- ══════════════════════════════════════════════════════
 
-local function makeESPGui(adornee, text, color)
+local ESP_THEME = {
+    bg       = Color3.fromRGB(8, 12, 8),
+    border   = Color3.fromRGB(40, 70, 40),
+    text     = Color3.fromRGB(228, 242, 228),
+    textDim  = Color3.fromRGB(110, 145, 110),
+    track    = Color3.fromRGB(5, 9, 5),
+    health   = Color3.fromRGB(98, 210, 60),
+    danger   = Color3.fromRGB(220, 75, 70),
+}
+
+local function espCorner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius)
+    c.Parent = parent
+end
+
+local function espStroke(parent, color, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Name = "Border"
+    s.Color = color
+    s.Thickness = thickness
+    s.Transparency = transparency or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+local function espLabel(parent, props)
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Font = props.Font or Enum.Font.Gotham
+    lbl.TextSize = props.TextSize or 11
+    lbl.TextColor3 = props.TextColor3 or ESP_THEME.text
+    lbl.TextXAlignment = props.TextXAlignment or Enum.TextXAlignment.Left
+    lbl.TextYAlignment = props.TextYAlignment or Enum.TextYAlignment.Center
+    lbl.TextTruncate = Enum.TextTruncate.AtEnd
+    lbl.Text = props.Text or ""
+    lbl.Size = props.Size
+    lbl.Position = props.Position
+    lbl.ZIndex = props.ZIndex or 4
+    lbl.Parent = parent
+    return lbl
+end
+
+local function makeESPBase(adornee, width, height, offsetY, maxDistance, color)
     local bb = Instance.new("BillboardGui")
-    bb.AlwaysOnTop  = true
-    bb.Size         = UDim2.new(0, 160, 0, 44)
-    bb.StudsOffset  = Vector3.new(0, 3.5, 0)
-    bb.Adornee      = adornee
-    bb.Parent       = adornee
+    bb.Name = "ESHubESP"
+    bb.AlwaysOnTop = true
+    bb.LightInfluence = 0
+    bb.MaxDistance = maxDistance
+    bb.Size = UDim2.new(0, width, 0, height)
+    bb.StudsOffset = Vector3.new(0, offsetY, 0)
+    bb.Adornee = adornee
+    bb.Parent = adornee
+
+    local shadow = Instance.new("Frame")
+    shadow.Size = UDim2.new(1, 0, 1, 0)
+    shadow.Position = UDim2.new(0, 2, 0, 3)
+    shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.BackgroundTransparency = 0.68
+    shadow.BorderSizePixel = 0
+    shadow.ZIndex = 1
+    shadow.Parent = bb
+    espCorner(shadow, 10)
 
     local frame = Instance.new("Frame")
-    frame.Size                   = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
+    frame.Name = "Card"
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = ESP_THEME.bg
     frame.BackgroundTransparency = S.ESP_BgTransp
-    frame.BorderSizePixel        = 0
-    frame.Parent                 = bb
+    frame.BorderSizePixel = 0
+    frame.ClipsDescendants = true
+    frame.ZIndex = 2
+    frame.Parent = bb
+    espCorner(frame, 9)
+    local border = espStroke(frame, ESP_THEME.border, 1, 0.08)
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent       = frame
+    local accent = Instance.new("Frame")
+    accent.Name = "Accent"
+    accent.Size = UDim2.new(1, -16, 0, 2)
+    accent.Position = UDim2.new(0, 8, 0, 1)
+    accent.BackgroundColor3 = color
+    accent.BorderSizePixel = 0
+    accent.ZIndex = 4
+    accent.Parent = frame
+    espCorner(accent, 1)
 
-    local espStroke = Instance.new("UIStroke")
-    -- Green border matching T.border from ESLib theme (34, 54, 30).
-    -- Note: T is local to ESLib.lua and not exported, so the value is mirrored here.
-    espStroke.Color     = Color3.fromRGB(34, 54, 30)
-    espStroke.Thickness = 1.5
-    espStroke.Parent    = frame
+    return bb, frame, accent, border
+end
 
-    local lbl = Instance.new("TextLabel")
-    lbl.Size                   = UDim2.new(1, -6, 1, 0)
-    lbl.Position               = UDim2.new(0, 3, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.TextColor3             = color or Color3.fromRGB(255, 255, 255)
-    lbl.TextSize               = S.ESP_TextSize
-    lbl.Font                   = Enum.Font.GothamBold
-    lbl.TextXAlignment         = Enum.TextXAlignment.Left
-    lbl.TextWrapped            = true
-    lbl.Text                   = text
-    lbl.Parent                 = frame
+local function makeObjectESPGui(adornee, title, category, distance, color, maxDistance)
+    local bb, frame, accent, border = makeESPBase(adornee, 150, 46, 3.2, maxDistance, color)
+    local titleLabel = espLabel(frame, {
+        Size = UDim2.new(1, -16, 0, 17),
+        Position = UDim2.new(0, 8, 0, 6),
+        Text = title,
+        TextSize = math.clamp(S.ESP_TextSize, 10, 16),
+        Font = Enum.Font.GothamBold,
+        TextColor3 = ESP_THEME.text,
+    })
+    titleLabel.Name = "Title"
+    local detail = category
+    if S.ESP_ShowDist then detail = detail .. "  |  " .. distance .. " studs" end
+    local detailLabel = espLabel(frame, {
+        Size = UDim2.new(1, -16, 0, 14),
+        Position = UDim2.new(0, 8, 0, 25),
+        Text = detail,
+        TextSize = math.clamp(S.ESP_TextSize - 2, 9, 13),
+        Font = Enum.Font.GothamSemibold,
+        TextColor3 = color,
+    })
+    detailLabel.Name = "Detail"
+    return bb, {
+        gui = bb,
+        frame = frame,
+        accent = accent,
+        border = border,
+        title = titleLabel,
+        detail = detailLabel,
+    }
+end
 
-    return bb, lbl
+local function makePlayerESPGui(adornee, color, maxDistance)
+    local bb, frame, accent, border = makeESPBase(adornee, 176, 58, 3.8, maxDistance, color)
+    local titleLabel = espLabel(frame, {
+        Size = UDim2.new(1, -16, 0, 17),
+        Position = UDim2.new(0, 8, 0, 6),
+        TextSize = math.clamp(S.ESP_TextSize, 10, 16),
+        Font = Enum.Font.GothamBold,
+        TextColor3 = color,
+    })
+    titleLabel.Name = "Title"
+    local detailLabel = espLabel(frame, {
+        Size = UDim2.new(1, -16, 0, 14),
+        Position = UDim2.new(0, 8, 0, 24),
+        TextSize = math.clamp(S.ESP_TextSize - 2, 9, 13),
+        Font = Enum.Font.GothamSemibold,
+        TextColor3 = ESP_THEME.textDim,
+    })
+    detailLabel.Name = "Detail"
+
+    local healthTrack = Instance.new("Frame")
+    healthTrack.Name = "HealthTrack"
+    healthTrack.Size = UDim2.new(1, -16, 0, 4)
+    healthTrack.Position = UDim2.new(0, 8, 1, -10)
+    healthTrack.BackgroundColor3 = ESP_THEME.track
+    healthTrack.BorderSizePixel = 0
+    healthTrack.ZIndex = 3
+    healthTrack.Parent = frame
+    espCorner(healthTrack, 2)
+
+    local healthFill = Instance.new("Frame")
+    healthFill.Name = "HealthFill"
+    healthFill.Size = UDim2.new(1, 0, 1, 0)
+    healthFill.BackgroundColor3 = ESP_THEME.health
+    healthFill.BorderSizePixel = 0
+    healthFill.ZIndex = 4
+    healthFill.Parent = healthTrack
+    espCorner(healthFill, 2)
+
+    return {
+        gui = bb,
+        frame = frame,
+        accent = accent,
+        border = border,
+        title = titleLabel,
+        detail = detailLabel,
+        healthFill = healthFill,
+    }
 end
 
 local function clearESP(tag)
@@ -1013,7 +1145,7 @@ TeleportTab:CreateButton({
 
 FruitTab:CreateSection("Wild Fruit ESP")
 
-FruitTab:CreateToggle({
+local FruitESPToggle = FruitTab:CreateToggle({
     Name         = "Wild Fruit ESP",
     CurrentValue = false,
     Flag         = "FruitESP",
@@ -1036,9 +1168,14 @@ FruitTab:CreateToggle({
                                 local dist = myRoot
                                     and math.floor((myRoot.Position - part.Position).Magnitude)
                                     or 0
-                                local label = "[FRUIT] " .. obj.Name
-                                if S.ESP_ShowDist then label = label .. "\n" .. dist .. " studs" end
-                                local gui, _ = makeESPGui(part, label, S.ESP_FruitColor)
+                                local gui = makeObjectESPGui(
+                                    part,
+                                    obj.Name:gsub("_", " "),
+                                    "WILD FRUIT",
+                                    dist,
+                                    S.ESP_FruitColor,
+                                    100000
+                                )
                                 table.insert(espObjects["fruits"], gui)
                             end
                         end
@@ -1120,7 +1257,26 @@ local function removePlayerESP(p)
     end
 end
 
-FruitTab:CreateToggle({
+local function updatePlayerESP(entry, p, hum, dist)
+    local health = math.max(0, math.floor(hum.Health))
+    local maxHealth = math.max(1, math.floor(hum.MaxHealth))
+    local ratio = math.clamp(health / maxHealth, 0, 1)
+    local displayName = p.DisplayName ~= p.Name
+        and (p.DisplayName .. "  @" .. p.Name)
+        or p.Name
+
+    entry.title.Text = displayName
+    entry.title.TextColor3 = S.ESP_PlayerColor
+    entry.accent.BackgroundColor3 = S.ESP_PlayerColor
+    entry.detail.Text = "HP " .. health .. " / " .. maxHealth
+        .. (S.ESP_ShowDist and ("  |  " .. dist .. " studs") or "")
+    entry.healthFill.Size = UDim2.new(ratio, 0, 1, 0)
+    entry.healthFill.BackgroundColor3 = ESP_THEME.danger:Lerp(ESP_THEME.health, ratio)
+    entry.frame.BackgroundTransparency = S.ESP_BgTransp
+    entry.gui.MaxDistance = S.PlayerESPDistance
+end
+
+local PlayerESPToggle = FruitTab:CreateToggle({
     Name         = "Player ESP",
     CurrentValue = false,
     Flag         = "PlayerESP",
@@ -1138,22 +1294,24 @@ FruitTab:CreateToggle({
                         if p ~= player and p.Character then
                             local root = p.Character:FindFirstChild("HumanoidRootPart")
                             local hum  = p.Character:FindFirstChildOfClass("Humanoid")
-                            if root and hum then
+                            if root and hum and myRoot then
                                 local dist = myRoot
                                     and math.floor((myRoot.Position - root.Position).Magnitude)
                                     or 0
-                                local text = "[" .. p.Name .. "]"
-                                    .. "\nHP: " .. math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth)
-                                if S.ESP_ShowDist then text = text .. "\n" .. dist .. " studs" end
 
-                                if playerESPLabels[p] then
+                                if dist <= S.PlayerESPDistance then
+                                    local entry = playerESPLabels[p]
+                                    if not entry or not entry.gui.Parent then
+                                        removePlayerESP(p)
+                                        entry = makePlayerESPGui(root, S.ESP_PlayerColor, S.PlayerESPDistance)
+                                        playerESPLabels[p] = entry
+                                    end
                                     pcall(function()
-                                        playerESPLabels[p].lbl.Text  = text
-                                        playerESPLabels[p].gui.Adornee = root
+                                        entry.gui.Adornee = root
+                                        updatePlayerESP(entry, p, hum, dist)
                                     end)
                                 else
-                                    local gui, lbl = makeESPGui(root, text, S.ESP_PlayerColor)
-                                    playerESPLabels[p] = { gui = gui, lbl = lbl }
+                                    removePlayerESP(p)
                                 end
                             else
                                 removePlayerESP(p)
@@ -1163,23 +1321,46 @@ FruitTab:CreateToggle({
                     for p, _ in pairs(playerESPLabels) do
                         if not p.Character or not p.Parent then removePlayerESP(p) end
                     end
-                    task.wait(0.5)
+                    task.wait(0.25)
                 end
                 for p, _ in pairs(playerESPLabels) do removePlayerESP(p) end
                 playerESPLabels = {}
             end)
 
             connections["playerESP"] = Players.PlayerRemoving:Connect(removePlayerESP)
-            notify("Player ESP", "Tracking all players.")
+            notify("Player ESP", "Tracking players within the selected range.")
         else
             notify("Player ESP", "Disabled.")
         end
     end
 })
 
+FruitTab:CreateSlider({
+    Name         = "Player ESP Range",
+    Range        = {250, 12000},
+    Increment    = 250,
+    Suffix       = " studs",
+    CurrentValue = S.PlayerESPDistance,
+    Flag         = "PlayerESPDistance",
+    Callback = function(v)
+        S.PlayerESPDistance = v
+        for _, entry in pairs(playerESPLabels) do
+            if entry.gui and entry.gui.Parent then entry.gui.MaxDistance = v end
+        end
+    end
+})
+
 FruitTab:CreateSection("Chest ESP")
 
-FruitTab:CreateToggle({
+local function resolveChestPart(obj)
+    if obj:IsA("Model") then
+        return obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+    end
+    if obj:IsA("BasePart") then return obj end
+    return nil
+end
+
+local ChestESPToggle = FruitTab:CreateToggle({
     Name         = "Chest ESP",
     CurrentValue = false,
     Flag         = "ChestESP",
@@ -1193,20 +1374,29 @@ FruitTab:CreateToggle({
                 while S.ChestESP do
                     clearESP("chests")
                     local myRoot = getRoot()
+                    local seenParts = {}
                     for _, obj in ipairs(Workspace:GetDescendants()) do
                         local name = obj.Name:lower()
-                        if name:find("chest") or name:find("treasure") or name:find("box") then
-                            local part = obj:IsA("Model")
-                                and (obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart"))
-                                or (obj:IsA("BasePart") and obj)
-                            if part and part.Parent then
+                        local isChest = name:find("chest", 1, true)
+                            or name:find("treasure", 1, true)
+                        if isChest then
+                            local part = resolveChestPart(obj)
+                            if part and part.Parent and not seenParts[part] and myRoot then
+                                seenParts[part] = true
                                 local dist = myRoot
                                     and math.floor((myRoot.Position - part.Position).Magnitude)
                                     or 0
-                                local label = "[CHEST] " .. obj.Name
-                                if S.ESP_ShowDist then label = label .. "\n" .. dist .. " studs" end
-                                local gui, _ = makeESPGui(part, label, S.ESP_ChestColor)
-                                table.insert(espObjects["chests"], gui)
+                                if dist <= S.ChestESPDistance then
+                                    local gui = makeObjectESPGui(
+                                        part,
+                                        obj.Name:gsub("_", " "),
+                                        "CHEST",
+                                        dist,
+                                        S.ESP_ChestColor,
+                                        S.ChestESPDistance
+                                    )
+                                    table.insert(espObjects["chests"], gui)
+                                end
                             end
                         end
                     end
@@ -1214,9 +1404,24 @@ FruitTab:CreateToggle({
                 end
                 clearESP("chests")
             end)
-            notify("Chest ESP", "Showing treasure chests.")
+            notify("Chest ESP", "Showing chests within the selected range.")
         else
             notify("Chest ESP", "Disabled.")
+        end
+    end
+})
+
+FruitTab:CreateSlider({
+    Name         = "Chest ESP Range",
+    Range        = {250, 12000},
+    Increment    = 250,
+    Suffix       = " studs",
+    CurrentValue = S.ChestESPDistance,
+    Flag         = "ChestESPDistance",
+    Callback = function(v)
+        S.ChestESPDistance = v
+        for _, gui in ipairs(espObjects["chests"] or {}) do
+            if gui and gui.Parent then gui.MaxDistance = v end
         end
     end
 })
@@ -1230,6 +1435,9 @@ FruitTab:CreateButton({
         S.FruitESP  = false
         S.PlayerESP = false
         S.ChestESP  = false
+        FruitESPToggle:Set(false)
+        PlayerESPToggle:Set(false)
+        ChestESPToggle:Set(false)
         notify("ESP Cleared", "All ESP labels removed.")
     end
 })
@@ -1359,6 +1567,15 @@ MiscTab:CreateDropdown({
     Callback = function(opt)
         local c = type(opt) == "table" and opt[1] or opt
         S.ESP_FruitColor = colorMap[c] or Color3.fromRGB(255,80,80)
+        for _, gui in ipairs(espObjects["fruits"] or {}) do
+            local card = gui and gui:FindFirstChild("Card")
+            if card then
+                local accent = card:FindFirstChild("Accent")
+                local detail = card:FindFirstChild("Detail")
+                if accent then accent.BackgroundColor3 = S.ESP_FruitColor end
+                if detail then detail.TextColor3 = S.ESP_FruitColor end
+            end
+        end
         notify("ESP Color", "Fruit ESP color set to " .. tostring(c))
     end
 })
@@ -1371,6 +1588,10 @@ MiscTab:CreateDropdown({
     Callback = function(opt)
         local c = type(opt) == "table" and opt[1] or opt
         S.ESP_PlayerColor = colorMap[c] or Color3.fromRGB(80,200,255)
+        for _, entry in pairs(playerESPLabels) do
+            entry.title.TextColor3 = S.ESP_PlayerColor
+            entry.accent.BackgroundColor3 = S.ESP_PlayerColor
+        end
         notify("ESP Color", "Player ESP color set to " .. tostring(c))
     end
 })
@@ -1383,20 +1604,46 @@ MiscTab:CreateDropdown({
     Callback = function(opt)
         local c = type(opt) == "table" and opt[1] or opt
         S.ESP_ChestColor = colorMap[c] or Color3.fromRGB(255,215,0)
+        for _, gui in ipairs(espObjects["chests"] or {}) do
+            local card = gui and gui:FindFirstChild("Card")
+            if card then
+                local accent = card:FindFirstChild("Accent")
+                local detail = card:FindFirstChild("Detail")
+                if accent then accent.BackgroundColor3 = S.ESP_ChestColor end
+                if detail then detail.TextColor3 = S.ESP_ChestColor end
+            end
+        end
         notify("ESP Color", "Chest ESP color set to " .. tostring(c))
     end
 })
 
 MiscTab:CreateSlider({
     Name         = "ESP Text Size",
-    Range        = {10, 28},
+    Range        = {10, 16},
     Increment    = 1,
     Suffix       = " px",
     CurrentValue = 14,
     Flag         = "ESPTextSize",
     Callback = function(v)
         S.ESP_TextSize = v
-        notify("ESP", "Text size set to " .. v .. "px. Restart ESP toggles to apply.")
+        local titleSize = math.clamp(v, 10, 16)
+        local detailSize = math.clamp(v - 2, 9, 13)
+        for _, list in pairs(espObjects) do
+            for _, gui in ipairs(list) do
+                local card = gui and gui:FindFirstChild("Card")
+                if card then
+                    local title = card:FindFirstChild("Title")
+                    local detail = card:FindFirstChild("Detail")
+                    if title then title.TextSize = titleSize end
+                    if detail then detail.TextSize = detailSize end
+                end
+            end
+        end
+        for _, entry in pairs(playerESPLabels) do
+            entry.title.TextSize = titleSize
+            entry.detail.TextSize = detailSize
+        end
+        notify("ESP", "Text size updated to " .. v .. "px.")
     end
 })
 
@@ -1410,7 +1657,16 @@ MiscTab:CreateSlider({
     Callback = function(v)
         -- Transparency = 1 - (opacity/100)
         S.ESP_BgTransp = 1 - (v / 100)
-        notify("ESP", "Background opacity " .. v .. "%. Restart ESP toggles to apply.")
+        for _, list in pairs(espObjects) do
+            for _, gui in ipairs(list) do
+                local card = gui and gui:FindFirstChild("Card")
+                if card then card.BackgroundTransparency = S.ESP_BgTransp end
+            end
+        end
+        for _, entry in pairs(playerESPLabels) do
+            entry.frame.BackgroundTransparency = S.ESP_BgTransp
+        end
+        notify("ESP", "Background opacity updated to " .. v .. "%.")
     end
 })
 
