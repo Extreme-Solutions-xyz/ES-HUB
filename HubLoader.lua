@@ -430,17 +430,6 @@ headerFill.BorderSizePixel  = 0
 headerFill.ZIndex           = 3
 headerFill.Parent           = headerBg
 
--- Accent gradient line at very top (thin, inside the rounded panel)
-local accentLine = Instance.new("Frame")
-accentLine.Size             = UDim2.new(1, -(PANEL_RADIUS * 2), 0, sc(2))
-accentLine.Position         = UDim2.new(0, PANEL_RADIUS, 0, 1)
-accentLine.BackgroundColor3 = C.accent
-accentLine.BorderSizePixel  = 0
-accentLine.ZIndex           = 10
-accentLine.Parent           = panel
-makeCorner(accentLine, sc(1))
-makeGradient(accentLine, C.accent, C.accentDim, 0)
-
 -- Header divider
 local divider = Instance.new("Frame")
 divider.Size             = UDim2.new(1, -2, 0, 1)

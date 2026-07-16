@@ -1643,6 +1643,8 @@ MiscTab:CreateSlider({
             entry.title.TextSize = titleSize
             entry.detail.TextSize = detailSize
         end
+    end,
+    FinishedCallback = function(v)
         notify("ESP", "Text size updated to " .. v .. "px.")
     end
 })
@@ -1666,6 +1668,8 @@ MiscTab:CreateSlider({
         for _, entry in pairs(playerESPLabels) do
             entry.frame.BackgroundTransparency = S.ESP_BgTransp
         end
+    end,
+    FinishedCallback = function(v)
         notify("ESP", "Background opacity updated to " .. v .. "%.")
     end
 })

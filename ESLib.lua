@@ -20,6 +20,7 @@ local TweenService = game:GetService("TweenService")
 local UIS          = game:GetService("UserInputService")
 local HttpService  = game:GetService("HttpService")
 local RunService   = game:GetService("RunService")
+local TextService  = game:GetService("TextService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
@@ -217,16 +218,17 @@ notifGui.DisplayOrder   = 200
 notifGui.Parent         = PlayerGui
 
 local notifViewport = game:GetService("Workspace").CurrentCamera.ViewportSize
-local NOTIF_W = math.clamp(notifViewport.X - 20, 240, 320)
+local NOTIF_MAX_W = math.clamp(notifViewport.X - 20, 230, 286)
+local NOTIF_MIN_W = math.min(220, NOTIF_MAX_W)
 
 local notifHolder = newFrame({
-    Size                   = UDim2.new(0, NOTIF_W, 1, 0),
-    Position               = UDim2.new(1, -(NOTIF_W + 10), 0, 0),
+    Size                   = UDim2.new(0, NOTIF_MAX_W, 1, 0),
+    Position               = UDim2.new(1, -(NOTIF_MAX_W + 10), 0, 0),
     BackgroundTransparency = 1,
     Parent                 = notifGui,
 })
-listLayout(notifHolder, 10)
-pad(notifHolder, 16, 0, 16, 0)
+listLayout(notifHolder, 8)
+pad(notifHolder, 12, 0, 12, 0)
 
 local function notify(title, content, ntype, duration)
     ntype    = ntype    or "info"
@@ -237,62 +239,75 @@ local function notify(title, content, ntype, duration)
              or ntype == "warning" and T.warning
              or T.accent
 
+    title   = tostring(title or "Notification")
+    content = tostring(content or "")
+
+    local titleWidth = TextService:GetTextSize(
+        title, 12, Enum.Font.GothamBold, Vector2.new(1000, 20)
+    ).X
+    local singleLineContentWidth = TextService:GetTextSize(
+        content, 10, Enum.Font.Gotham, Vector2.new(1000, 20)
+    ).X
+    local cardWidth = math.clamp(
+        math.ceil(math.max(titleWidth, singleLineContentWidth) + 56),
+        NOTIF_MIN_W,
+        NOTIF_MAX_W
+    )
+    local textWidth = cardWidth - 56
+    local contentHeight = math.max(13, math.ceil(TextService:GetTextSize(
+        content, 10, Enum.Font.Gotham, Vector2.new(textWidth, 1000)
+    ).Y))
+    local cardHeight = math.clamp(37 + contentHeight, 54, 88)
+    local slotHeight = cardHeight + 6
+    local restingX = NOTIF_MAX_W - cardWidth
+
     -- The layout owns the slot; the group inside it can slide independently.
     local slot = newFrame({
-        Size                   = UDim2.new(1, 0, 0, 84),
+        Size                   = UDim2.new(1, 0, 0, slotHeight),
         BackgroundTransparency = 1,
         Parent                 = notifHolder,
     })
 
     local group = newFrame({
-        Size                   = UDim2.new(1, 0, 1, 0),
-        Position               = UDim2.new(1, 18, 0, 0),
+        Size                   = UDim2.new(0, cardWidth, 0, slotHeight),
+        Position               = UDim2.new(0, NOTIF_MAX_W + 18, 0, 0),
         BackgroundTransparency = 1,
         Parent                 = slot,
     })
 
     local shadow = newFrame({
-        Size                   = UDim2.new(1, -6, 0, 78),
+        Size                   = UDim2.new(1, -6, 0, cardHeight),
         Position               = UDim2.new(0, 2, 0, 4),
         BackgroundColor3       = T.black,
         BackgroundTransparency = 0.74,
         ZIndex                 = 1,
         Parent                 = group,
     })
-    corner(shadow, 14)
+    corner(shadow, 12)
 
     local notificationGlow = newFrame({
-        Size                   = UDim2.new(1, -4, 0, 80),
+        Size                   = UDim2.new(1, -4, 0, cardHeight + 2),
         Position               = UDim2.new(0, -1, 0, -1),
         BackgroundTransparency = 1,
         ZIndex                 = 1,
         Parent                 = group,
     })
-    corner(notificationGlow, 13)
+    corner(notificationGlow, 11)
     stroke(notificationGlow, col, 2, 0.82)
 
     local card = newFrame({
-        Size             = UDim2.new(1, -6, 0, 78),
+        Size             = UDim2.new(1, -6, 0, cardHeight),
         BackgroundColor3 = T.panel,
         ClipsDescendants = true,
         ZIndex           = 2,
         Parent           = group,
     })
-    corner(card, 12)
+    corner(card, 10)
     stroke(card, T.border, 1)
 
-    local accent = newFrame({
-        Size             = UDim2.new(1, -24, 0, 2),
-        Position         = UDim2.new(0, 12, 0, 1),
-        BackgroundColor3 = col,
-        ZIndex           = 4,
-        Parent           = card,
-    })
-    corner(accent, 1)
-
     local logo = Instance.new("ImageLabel")
-    logo.Size                   = UDim2.new(0, 28, 0, 28)
-    logo.Position               = UDim2.new(0, 12, 0, 15)
+    logo.Size                   = UDim2.new(0, 22, 0, 22)
+    logo.Position               = UDim2.new(0, 10, 0, 10)
     logo.BackgroundTransparency = 1
     logo.Image                  = LOGO_ASSET
     logo.ScaleType              = Enum.ScaleType.Fit
@@ -300,29 +315,30 @@ local function notify(title, content, ntype, duration)
     logo.Parent                 = card
 
     newLabel({
-        Size       = UDim2.new(1, -62, 0, 18),
-        Position   = UDim2.new(0, 50, 0, 11),
+        Size       = UDim2.new(1, -50, 0, 17),
+        Position   = UDim2.new(0, 40, 0, 7),
         Text       = title,
-        TextSize   = 13,
+        TextSize   = 12,
         Font       = Enum.Font.GothamBold,
         TextColor3 = T.textPri,
         ZIndex     = 4,
         Parent     = card,
     })
     newLabel({
-        Size        = UDim2.new(1, -62, 0, 30),
-        Position    = UDim2.new(0, 50, 0, 31),
+        Size        = UDim2.new(1, -50, 0, contentHeight),
+        Position    = UDim2.new(0, 40, 0, 25),
         Text        = content,
-        TextSize    = 11,
+        TextSize    = 10,
         TextColor3  = T.textSec,
         TextWrapped = true,
+        TextYAlignment = Enum.TextYAlignment.Top,
         ZIndex      = 4,
         Parent      = card,
     })
 
     local progressTrack = newFrame({
-        Size             = UDim2.new(1, -24, 0, 2),
-        Position         = UDim2.new(0, 12, 1, -7),
+        Size             = UDim2.new(1, -20, 0, 2),
+        Position         = UDim2.new(0, 10, 1, -6),
         BackgroundColor3 = T.input,
         ZIndex           = 3,
         Parent           = card,
@@ -338,11 +354,11 @@ local function notify(title, content, ntype, duration)
     })
     corner(prog, 1)
 
-    tw(group, { Position = UDim2.new(0, 0, 0, 0) }, 0.32, Enum.EasingStyle.Back)
+    tw(group, { Position = UDim2.new(0, restingX, 0, 0) }, 0.32, Enum.EasingStyle.Back)
     tw(prog, { Size = UDim2.new(0, 0, 0, 2) }, duration, Enum.EasingStyle.Linear)
 
     task.delay(duration, function()
-        tw(group, { Position = UDim2.new(1, 18, 0, 0) }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        tw(group, { Position = UDim2.new(0, NOTIF_MAX_W + 18, 0, 0) }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         task.wait(0.3)
         pcall(function() slot:Destroy() end)
     end)
@@ -1039,8 +1055,9 @@ function ESLib:CreateWindow(config)
             })
             corner(knob, 7)
 
-            local sliderObj  = {}
-            local draggingSl = false
+            local sliderObj    = {}
+            local draggingSl   = false
+            local dragInputType
 
             local function setVal(v, fire)
                 v   = math.clamp(math.round(v / inc) * inc, mn, mx)
@@ -1053,21 +1070,36 @@ function ESLib:CreateWindow(config)
                 if cfg.Flag then savedValues[cfg.Flag] = v end
             end
 
+            local function updateFromInput(input)
+                local rel = input.Position.X - track.AbsolutePosition.X
+                setVal(mn + (rel / math.max(track.AbsoluteSize.X, 1)) * (mx - mn), true)
+            end
+
             -- Dragging
             track.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                local inputType = input.UserInputType
+                if inputType == Enum.UserInputType.MouseButton1
+                or inputType == Enum.UserInputType.Touch then
                     draggingSl = true
-                    local rel  = input.Position.X - track.AbsolutePosition.X
-                    setVal(mn + (rel / math.max(track.AbsoluteSize.X, 1)) * (mx - mn), true)
+                    dragInputType = inputType
+                    updateFromInput(input)
                 end
             end)
             UIS.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingSl = false end
+                if draggingSl and input.UserInputType == dragInputType then
+                    draggingSl = false
+                    dragInputType = nil
+                    if cfg.FinishedCallback then cfg.FinishedCallback(val) end
+                end
             end)
             UIS.InputChanged:Connect(function(input)
-                if draggingSl and input.UserInputType == Enum.UserInputType.MouseMovement then
-                    local rel = input.Position.X - track.AbsolutePosition.X
-                    setVal(mn + (rel / math.max(track.AbsoluteSize.X, 1)) * (mx - mn), true)
+                local inputType = input.UserInputType
+                local isMouseMove = dragInputType == Enum.UserInputType.MouseButton1
+                    and inputType == Enum.UserInputType.MouseMovement
+                local isTouchMove = dragInputType == Enum.UserInputType.Touch
+                    and inputType == Enum.UserInputType.Touch
+                if draggingSl and (isMouseMove or isTouchMove) then
+                    updateFromInput(input)
                 end
             end)
 
