@@ -216,14 +216,17 @@ notifGui.IgnoreGuiInset = true
 notifGui.DisplayOrder   = 200
 notifGui.Parent         = PlayerGui
 
+local notifViewport = game:GetService("Workspace").CurrentCamera.ViewportSize
+local NOTIF_W = math.clamp(notifViewport.X - 20, 240, 320)
+
 local notifHolder = newFrame({
-    Size                   = UDim2.new(0, 290, 1, 0),
-    Position               = UDim2.new(1, -300, 0, 0),
+    Size                   = UDim2.new(0, NOTIF_W, 1, 0),
+    Position               = UDim2.new(1, -(NOTIF_W + 10), 0, 0),
     BackgroundTransparency = 1,
     Parent                 = notifGui,
 })
-listLayout(notifHolder, 8)
-pad(notifHolder, 14, 0, 14, 0)
+listLayout(notifHolder, 10)
+pad(notifHolder, 16, 0, 16, 0)
 
 local function notify(title, content, ntype, duration)
     ntype    = ntype    or "info"
@@ -234,56 +237,114 @@ local function notify(title, content, ntype, duration)
              or ntype == "warning" and T.warning
              or T.accent
 
+    -- The layout owns the slot; the group inside it can slide independently.
+    local slot = newFrame({
+        Size                   = UDim2.new(1, 0, 0, 84),
+        BackgroundTransparency = 1,
+        Parent                 = notifHolder,
+    })
+
+    local group = newFrame({
+        Size                   = UDim2.new(1, 0, 1, 0),
+        Position               = UDim2.new(1, 18, 0, 0),
+        BackgroundTransparency = 1,
+        Parent                 = slot,
+    })
+
+    local shadow = newFrame({
+        Size                   = UDim2.new(1, -6, 0, 78),
+        Position               = UDim2.new(0, 2, 0, 4),
+        BackgroundColor3       = T.black,
+        BackgroundTransparency = 0.74,
+        ZIndex                 = 1,
+        Parent                 = group,
+    })
+    corner(shadow, 14)
+
+    local notificationGlow = newFrame({
+        Size                   = UDim2.new(1, -4, 0, 80),
+        Position               = UDim2.new(0, -1, 0, -1),
+        BackgroundTransparency = 1,
+        ZIndex                 = 1,
+        Parent                 = group,
+    })
+    corner(notificationGlow, 13)
+    stroke(notificationGlow, col, 2, 0.82)
+
     local card = newFrame({
-        Size             = UDim2.new(1, 0, 0, 68),
+        Size             = UDim2.new(1, -6, 0, 78),
         BackgroundColor3 = T.panel,
         ClipsDescendants = true,
-        Parent           = notifHolder,
+        ZIndex           = 2,
+        Parent           = group,
     })
-    corner(card, 10)
+    corner(card, 12)
     stroke(card, T.border, 1)
 
-    -- Left accent bar
-    local bar = newFrame({ Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = col, Parent = card })
-    corner(bar, 2)
+    local accent = newFrame({
+        Size             = UDim2.new(1, -24, 0, 2),
+        Position         = UDim2.new(0, 12, 0, 1),
+        BackgroundColor3 = col,
+        ZIndex           = 4,
+        Parent           = card,
+    })
+    corner(accent, 1)
+
+    local logo = Instance.new("ImageLabel")
+    logo.Size                   = UDim2.new(0, 28, 0, 28)
+    logo.Position               = UDim2.new(0, 12, 0, 15)
+    logo.BackgroundTransparency = 1
+    logo.Image                  = LOGO_ASSET
+    logo.ScaleType              = Enum.ScaleType.Fit
+    logo.ZIndex                 = 4
+    logo.Parent                 = card
 
     newLabel({
-        Size       = UDim2.new(1, -22, 0, 18),
-        Position   = UDim2.new(0, 13, 0, 10),
+        Size       = UDim2.new(1, -62, 0, 18),
+        Position   = UDim2.new(0, 50, 0, 11),
         Text       = title,
         TextSize   = 13,
         Font       = Enum.Font.GothamBold,
         TextColor3 = T.textPri,
+        ZIndex     = 4,
         Parent     = card,
     })
     newLabel({
-        Size        = UDim2.new(1, -22, 0, 28),
-        Position    = UDim2.new(0, 13, 0, 30),
+        Size        = UDim2.new(1, -62, 0, 30),
+        Position    = UDim2.new(0, 50, 0, 31),
         Text        = content,
         TextSize    = 11,
         TextColor3  = T.textSec,
         TextWrapped = true,
+        ZIndex      = 4,
         Parent      = card,
     })
 
-    -- Slide in from right
-    card.Position = UDim2.new(1, 14, 0, 0)
-    tw(card, { Position = UDim2.new(0, 0, 0, 0) }, 0.3, Enum.EasingStyle.Back)
-
-    -- Progress bar
-    local prog = newFrame({
-        Size             = UDim2.new(1, 0, 0, 2),
-        Position         = UDim2.new(0, 0, 1, -2),
-        BackgroundColor3 = col,
-        BackgroundTransparency = 0.5,
+    local progressTrack = newFrame({
+        Size             = UDim2.new(1, -24, 0, 2),
+        Position         = UDim2.new(0, 12, 1, -7),
+        BackgroundColor3 = T.input,
+        ZIndex           = 3,
         Parent           = card,
     })
+    corner(progressTrack, 1)
+
+    local prog = newFrame({
+        Size             = UDim2.new(1, 0, 0, 2),
+        BackgroundColor3 = col,
+        BackgroundTransparency = 0.15,
+        ZIndex           = 4,
+        Parent           = progressTrack,
+    })
+    corner(prog, 1)
+
+    tw(group, { Position = UDim2.new(0, 0, 0, 0) }, 0.32, Enum.EasingStyle.Back)
     tw(prog, { Size = UDim2.new(0, 0, 0, 2) }, duration, Enum.EasingStyle.Linear)
 
     task.delay(duration, function()
-        tw(card, { Position = UDim2.new(1, 14, 0, 0), BackgroundTransparency = 1 }, 0.25)
+        tw(group, { Position = UDim2.new(1, 18, 0, 0) }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         task.wait(0.3)
-        pcall(function() card:Destroy() end)
+        pcall(function() slot:Destroy() end)
     end)
 end
 
@@ -333,7 +394,7 @@ function ESLib:CreateWindow(config)
         Position               = UDim2.new(0.5, 0, 0.5, 0),
         Size                   = UDim2.new(0, WIN_W + 14, 0, WIN_H + 14),
         BackgroundTransparency = 1,
-        ZIndex                 = 7,
+        ZIndex                 = 1,
         Parent                 = gui,
     })
     corner(outerGlow, WINDOW_RADIUS + 7)
@@ -345,7 +406,7 @@ function ESLib:CreateWindow(config)
         Position               = UDim2.new(0.5, 0, 0.5, 0),
         Size                   = UDim2.new(0, WIN_W + 7, 0, WIN_H + 7),
         BackgroundTransparency = 1,
-        ZIndex                 = 8,
+        ZIndex                 = 1,
         Parent                 = gui,
     })
     corner(middleGlow, WINDOW_RADIUS + 4)
@@ -357,7 +418,7 @@ function ESLib:CreateWindow(config)
         Position               = UDim2.new(0.5, 0, 0.5, 0),
         Size                   = UDim2.new(0, WIN_W + 2, 0, WIN_H + 2),
         BackgroundTransparency = 1,
-        ZIndex                 = 9,
+        ZIndex                 = 1,
         Parent                 = gui,
     })
     corner(innerGlow, WINDOW_RADIUS + 1)
