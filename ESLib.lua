@@ -79,6 +79,7 @@ local HEADER_H = 42
 local SIDEBAR_W = 152
 local CONTENT_W = WIN_W - SIDEBAR_W
 local CONTENT_H = WIN_H - HEADER_H
+local WINDOW_RADIUS = 16
 
 -- ══════════════════════════════════════════════════════
 --  HELPERS
@@ -291,14 +292,14 @@ function ESLib:CreateWindow(config)
     -- ── Shadow ───────────────────────────────────────
     local shadow = newFrame({
         AnchorPoint            = Vector2.new(0.5, 0.5),
-        Position               = UDim2.new(0.5, 2, 0.5, 4),
-        Size                   = UDim2.new(0, WIN_W + 10, 0, WIN_H + 10),
+        Position               = UDim2.new(0.5, 0, 0.5, 4),
+        Size                   = UDim2.new(0, WIN_W + 8, 0, WIN_H + 8),
         BackgroundColor3       = T.black,
-        BackgroundTransparency = 0.68,
+        BackgroundTransparency = 0.82,
         ZIndex                 = 1,
         Parent                 = gui,
     })
-    corner(shadow, 17)
+    corner(shadow, WINDOW_RADIUS + 5)
 
     -- ── Main window ───────────────────────────────────
     local win = newFrame({
@@ -310,26 +311,60 @@ function ESLib:CreateWindow(config)
         ZIndex           = 2,
         Parent           = gui,
     })
-    corner(win, 16)
+    corner(win, WINDOW_RADIUS)
 
-    -- ── Border overlay (separate from win so ClipsDescendants doesn't square it) ──
+    -- Layered strokes mimic a soft glow while keeping the window edge crisp.
+    local outerGlow = newFrame({
+        AnchorPoint            = Vector2.new(0.5, 0.5),
+        Position               = UDim2.new(0.5, 0, 0.5, 0),
+        Size                   = UDim2.new(0, WIN_W + 8, 0, WIN_H + 8),
+        BackgroundTransparency = 1,
+        ZIndex                 = 8,
+        Parent                 = gui,
+    })
+    corner(outerGlow, WINDOW_RADIUS + 4)
+    local outerGlowStroke = stroke(outerGlow, T.accent, 4, 0.9)
+
+    local innerGlow = newFrame({
+        AnchorPoint            = Vector2.new(0.5, 0.5),
+        Position               = UDim2.new(0.5, 0, 0.5, 0),
+        Size                   = UDim2.new(0, WIN_W + 2, 0, WIN_H + 2),
+        BackgroundTransparency = 1,
+        ZIndex                 = 9,
+        Parent                 = gui,
+    })
+    corner(innerGlow, WINDOW_RADIUS + 1)
+    local innerGlowStroke = stroke(innerGlow, T.accentLight, 2, 0.7)
+
+    -- The crisp border uses the exact same bounds and radius as the window.
     local borderOverlay = newFrame({
         AnchorPoint            = Vector2.new(0.5, 0.5),
         Position               = UDim2.new(0.5, 0, 0.5, 0),
-        Size                   = UDim2.new(0, WIN_W - 2, 0, WIN_H - 2),
+        Size                   = UDim2.new(0, WIN_W, 0, WIN_H),
         BackgroundTransparency = 1,
         ZIndex                 = 10,
         Parent                 = gui,
     })
-    corner(borderOverlay, 15)
-    stroke(borderOverlay, T.border, 1, 0.08)
+    corner(borderOverlay, WINDOW_RADIUS)
+    local borderStroke = stroke(borderOverlay, T.border, 1, 0)
 
     -- ── Header ───────────────────────────────────────
     local header = newFrame({
-        Size             = UDim2.new(1, 0, 0, HEADER_H),
+        Size             = UDim2.new(1, -2, 0, HEADER_H - 1),
+        Position         = UDim2.new(0, 1, 0, 1),
         BackgroundColor3 = T.sidebar,
         ZIndex           = 4,
         Parent           = win,
+    })
+    corner(header, WINDOW_RADIUS - 1)
+
+    -- Square only the internal edge; the two exposed top corners stay rounded.
+    newFrame({
+        Size             = UDim2.new(1, 0, 1, -(WINDOW_RADIUS - 1)),
+        Position         = UDim2.new(0, 0, 0, WINDOW_RADIUS - 1),
+        BackgroundColor3 = T.sidebar,
+        ZIndex           = 4,
+        Parent           = header,
     })
 
     -- Header divider
@@ -412,11 +447,27 @@ function ESLib:CreateWindow(config)
 
     -- ── Sidebar ───────────────────────────────────────
     local sidebar = newFrame({
-        Size             = UDim2.new(0, SIDEBAR_W, 0, CONTENT_H),
-        Position         = UDim2.new(0, 0, 0, HEADER_H),
+        Size             = UDim2.new(0, SIDEBAR_W - 1, 0, CONTENT_H - 1),
+        Position         = UDim2.new(0, 1, 0, HEADER_H),
         BackgroundColor3 = T.sidebar,
         ZIndex           = 3,
         Parent           = win,
+    })
+    corner(sidebar, WINDOW_RADIUS - 1)
+
+    -- Keep the internal top and right edges square, preserving bottom-left only.
+    newFrame({
+        Size             = UDim2.new(1, 0, 0, WINDOW_RADIUS - 1),
+        BackgroundColor3 = T.sidebar,
+        ZIndex           = 3,
+        Parent           = sidebar,
+    })
+    newFrame({
+        Size             = UDim2.new(0, WINDOW_RADIUS - 1, 1, 0),
+        Position         = UDim2.new(1, -(WINDOW_RADIUS - 1), 0, 0),
+        BackgroundColor3 = T.sidebar,
+        ZIndex           = 3,
+        Parent           = sidebar,
     })
 
     -- Sidebar right divider
@@ -430,11 +481,25 @@ function ESLib:CreateWindow(config)
 
     -- Sidebar bottom branding strip
     local brandStrip = newFrame({
-        Size             = UDim2.new(1, -2, 0, 28),
+        Size             = UDim2.new(1, -1, 0, 28),
         Position         = UDim2.new(0, 0, 1, -28),
         BackgroundColor3 = T.bg,
         ZIndex           = 4,
         Parent           = sidebar,
+    })
+    corner(brandStrip, WINDOW_RADIUS - 1)
+    newFrame({
+        Size             = UDim2.new(1, 0, 0, WINDOW_RADIUS - 1),
+        BackgroundColor3 = T.bg,
+        ZIndex           = 4,
+        Parent           = brandStrip,
+    })
+    newFrame({
+        Size             = UDim2.new(0, WINDOW_RADIUS - 1, 1, 0),
+        Position         = UDim2.new(1, -(WINDOW_RADIUS - 1), 0, 0),
+        BackgroundColor3 = T.bg,
+        ZIndex           = 4,
+        Parent           = brandStrip,
     })
     newLabel({
         Size           = UDim2.new(1, 0, 1, 0),
@@ -457,11 +522,26 @@ function ESLib:CreateWindow(config)
 
     -- ── Content area ──────────────────────────────────
     local contentArea = newFrame({
-        Size             = UDim2.new(0, CONTENT_W, 0, CONTENT_H),
+        Size             = UDim2.new(0, CONTENT_W - 1, 0, CONTENT_H - 1),
         Position         = UDim2.new(0, SIDEBAR_W, 0, HEADER_H),
         BackgroundColor3 = T.panel,
         ZIndex           = 2,
         Parent           = win,
+    })
+    corner(contentArea, WINDOW_RADIUS - 1)
+
+    -- Keep the internal top and left edges square, preserving bottom-right only.
+    newFrame({
+        Size             = UDim2.new(1, 0, 0, WINDOW_RADIUS - 1),
+        BackgroundColor3 = T.panel,
+        ZIndex           = 2,
+        Parent           = contentArea,
+    })
+    newFrame({
+        Size             = UDim2.new(0, WINDOW_RADIUS - 1, 1, 0),
+        BackgroundColor3 = T.panel,
+        ZIndex           = 2,
+        Parent           = contentArea,
     })
 
     -- ── Drag (header + sidebar only — prevents sliders triggering window move) ───
@@ -496,7 +576,9 @@ function ESLib:CreateWindow(config)
                 local newX = math.clamp(startWin.X.Offset + d.X, WIN_W / 2 - vp.X / 2, vp.X / 2 - WIN_W / 2)
                 local newY = math.clamp(startWin.Y.Offset + d.Y, WIN_H / 2 - vp.Y / 2, vp.Y / 2 - WIN_H / 2)
                 win.Position           = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
-                shadow.Position        = UDim2.new(startShadow.X.Scale, newX + 2, startShadow.Y.Scale, newY + 4)
+                shadow.Position        = UDim2.new(startShadow.X.Scale, newX,     startShadow.Y.Scale, newY + 4)
+                outerGlow.Position     = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
+                innerGlow.Position     = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
                 borderOverlay.Position = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
             end
         end)
@@ -508,20 +590,26 @@ function ESLib:CreateWindow(config)
         minimised = not minimised
         if minimised then
             tw(win,           { Size = UDim2.new(0, WIN_W, 0, HEADER_H) }, 0.3)
-            tw(shadow,        { Size = UDim2.new(0, WIN_W + 10, 0, HEADER_H + 10) }, 0.3)
-            tw(borderOverlay, { Size = UDim2.new(0, WIN_W - 2, 0, HEADER_H - 2) }, 0.3)
+            tw(shadow,        { Size = UDim2.new(0, WIN_W + 8, 0, HEADER_H + 8) }, 0.3)
+            tw(outerGlow,     { Size = UDim2.new(0, WIN_W + 8, 0, HEADER_H + 8) }, 0.3)
+            tw(innerGlow,     { Size = UDim2.new(0, WIN_W + 2, 0, HEADER_H + 2) }, 0.3)
+            tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, HEADER_H) }, 0.3)
             minBtn.Text = "+"
         else
             tw(win,           { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.3, Enum.EasingStyle.Back)
-            tw(shadow,        { Size = UDim2.new(0, WIN_W + 10, 0, WIN_H + 10) }, 0.3, Enum.EasingStyle.Back)
-            tw(borderOverlay, { Size = UDim2.new(0, WIN_W - 2, 0, WIN_H - 2) }, 0.3, Enum.EasingStyle.Back)
+            tw(shadow,        { Size = UDim2.new(0, WIN_W + 8, 0, WIN_H + 8) }, 0.3, Enum.EasingStyle.Back)
+            tw(outerGlow,     { Size = UDim2.new(0, WIN_W + 8, 0, WIN_H + 8) }, 0.3, Enum.EasingStyle.Back)
+            tw(innerGlow,     { Size = UDim2.new(0, WIN_W + 2, 0, WIN_H + 2) }, 0.3, Enum.EasingStyle.Back)
+            tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.3, Enum.EasingStyle.Back)
             minBtn.Text = "-"
         end
     end)
     closeBtn.MouseButton1Click:Connect(function()
         tw(win,           { Size = UDim2.new(0, WIN_W, 0, 0), BackgroundTransparency = 1 }, 0.25)
         tw(shadow,        { BackgroundTransparency = 1 }, 0.25)
-        tw(borderOverlay, { BackgroundTransparency = 1 }, 0.25)
+        tw(outerGlowStroke, { Transparency = 1 }, 0.25)
+        tw(innerGlowStroke, { Transparency = 1 }, 0.25)
+        tw(borderStroke,  { Transparency = 1 }, 0.25)
         task.wait(0.3)
         gui:Destroy()
         notifGui:Destroy()
@@ -536,6 +624,8 @@ function ESLib:CreateWindow(config)
             if k == keyStr then
                 win.Visible           = not win.Visible
                 shadow.Visible        = win.Visible
+                outerGlow.Visible     = win.Visible
+                innerGlow.Visible     = win.Visible
                 borderOverlay.Visible = win.Visible
             end
         end)
@@ -543,12 +633,36 @@ function ESLib:CreateWindow(config)
 
     -- ── Entrance animation ────────────────────────────
     win.Size           = UDim2.new(0, WIN_W, 0, 0)
-    shadow.Size        = UDim2.new(0, WIN_W + 10, 0, 0)
-    borderOverlay.Size = UDim2.new(0, WIN_W - 2, 0, 0)
+    shadow.Size        = UDim2.new(0, WIN_W + 8, 0, 0)
+    outerGlow.Size     = UDim2.new(0, WIN_W + 8, 0, 0)
+    innerGlow.Size     = UDim2.new(0, WIN_W + 2, 0, 0)
+    borderOverlay.Size = UDim2.new(0, WIN_W, 0, 0)
     task.spawn(function()
         tw(win,           { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.45, Enum.EasingStyle.Back)
-        tw(shadow,        { Size = UDim2.new(0, WIN_W + 10, 0, WIN_H + 10) }, 0.45, Enum.EasingStyle.Back)
-        tw(borderOverlay, { Size = UDim2.new(0, WIN_W - 2, 0, WIN_H - 2) }, 0.45, Enum.EasingStyle.Back)
+        tw(shadow,        { Size = UDim2.new(0, WIN_W + 8, 0, WIN_H + 8) }, 0.45, Enum.EasingStyle.Back)
+        tw(outerGlow,     { Size = UDim2.new(0, WIN_W + 8, 0, WIN_H + 8) }, 0.45, Enum.EasingStyle.Back)
+        tw(innerGlow,     { Size = UDim2.new(0, WIN_W + 2, 0, WIN_H + 2) }, 0.45, Enum.EasingStyle.Back)
+        tw(borderOverlay, { Size = UDim2.new(0, WIN_W, 0, WIN_H) }, 0.45, Enum.EasingStyle.Back)
+    end)
+
+    -- Slow, even breathing cycle. Both strokes share the same timing so the
+    -- glow expands and fades as one border instead of flickering independently.
+    task.spawn(function()
+        local breatheInfo = TweenInfo.new(2.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        while gui.Parent do
+            local brightenOuter = TweenService:Create(outerGlowStroke, breatheInfo, { Transparency = 0.68 })
+            local brightenInner = TweenService:Create(innerGlowStroke, breatheInfo, { Transparency = 0.38 })
+            brightenOuter:Play()
+            brightenInner:Play()
+            brightenInner.Completed:Wait()
+            if not gui.Parent then break end
+
+            local dimOuter = TweenService:Create(outerGlowStroke, breatheInfo, { Transparency = 0.92 })
+            local dimInner = TweenService:Create(innerGlowStroke, breatheInfo, { Transparency = 0.74 })
+            dimOuter:Play()
+            dimInner:Play()
+            dimInner.Completed:Wait()
+        end
     end)
 
     -- ── Config state ──────────────────────────────────
