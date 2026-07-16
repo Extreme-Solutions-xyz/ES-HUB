@@ -12,9 +12,14 @@
 local CONFIG = {
     APIBaseURL  = "https://extremesolutionskeysystem-production.up.railway.app",
     OfflineKeys = {},
+    OfflineMode = {
+        Enabled = true,
+        Key = "ES-OFFLINE-DEV",
+        Message = "Railway offline: development key accepted.",
+    },
     StoreURL    = "https://extremesolutions.xyz",
     DiscordURL  = "https://discord.gg/extreme",
-    Version     = "v1.2",
+    Version     = "v1.2-dev",
 }
 
 
@@ -116,6 +121,10 @@ local function clearSavedKey()
 end
 
 local function validateKey(key)
+    if CONFIG.OfflineMode.Enabled and key == CONFIG.OfflineMode.Key then
+        return true, CONFIG.OfflineMode.Message
+    end
+
     if isOfflineKey(key) then
         return true, "Key accepted (offline)."
     end
