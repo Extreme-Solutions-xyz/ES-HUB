@@ -244,6 +244,19 @@ local function makeGradient(parent, c1, c2, rotation)
     return g
 end
 
+local function makeGlowGradient(parent)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, C.accentDim),
+        ColorSequenceKeypoint.new(0.35, C.accentHov),
+        ColorSequenceKeypoint.new(0.7, C.accent),
+        ColorSequenceKeypoint.new(1, C.accentDim),
+    })
+    g.Rotation = 22
+    g.Parent = parent
+    return g
+end
+
 -- FIXED: Properly fades ALL descendants including strokes, images, text
 local function fadeAll(root, duration)
     local info = TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -318,6 +331,8 @@ screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder   = 100
 screenGui.Parent         = playerGui
 
+local PANEL_RADIUS = sc(16)
+
 -- Fullscreen overlay
 local overlay = Instance.new("Frame")
 overlay.Size                   = UDim2.new(1, 0, 1, 0)
@@ -327,31 +342,37 @@ overlay.BorderSizePixel        = 0
 overlay.ZIndex                 = 1
 overlay.Parent                 = screenGui
 
--- ── Shadow (soft glow behind panel) ──
+-- Soft black depth shadow, kept separate from the green edge glow.
 local shadow = Instance.new("Frame")
 shadow.AnchorPoint       = Vector2.new(0.5, 0.5)
 shadow.Position          = UDim2.new(0.5, 0, 0.5, 4)
-shadow.Size              = UDim2.new(0, PANEL_W + 10, 0, PANEL_H + 10)
-shadow.BackgroundColor3  = C.glow
-shadow.BackgroundTransparency = 0.9
+shadow.Size              = UDim2.new(0, PANEL_W + sc(10), 0, PANEL_H + sc(10))
+shadow.BackgroundColor3  = C.shadow
+shadow.BackgroundTransparency = 0.86
 shadow.BorderSizePixel   = 0
 shadow.ZIndex            = 1
 shadow.Parent            = screenGui
-makeCorner(shadow, sc(16))
+makeCorner(shadow, PANEL_RADIUS + sc(6))
 
--- Subtle glow pulse animation on shadow
-task.spawn(function()
-    while shadow and shadow.Parent do
-        TweenService:Create(shadow, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            BackgroundTransparency = 0.84
-        }):Play()
-        task.wait(2)
-        TweenService:Create(shadow, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            BackgroundTransparency = 0.93
-        }):Play()
-        task.wait(2)
-    end
-end)
+local function createGlowLayer(expand, radiusAdd, thickness, transparency)
+    local layer = Instance.new("Frame")
+    layer.AnchorPoint            = Vector2.new(0.5, 0.5)
+    layer.Position               = UDim2.new(0.5, 0, 0.5, 0)
+    layer.Size                   = UDim2.new(0, PANEL_W + sc(expand), 0, PANEL_H + sc(expand))
+    layer.BackgroundTransparency = 1
+    layer.BorderSizePixel        = 0
+    layer.ZIndex                 = 1
+    layer.Parent                 = screenGui
+    makeCorner(layer, PANEL_RADIUS + sc(radiusAdd))
+
+    local layerStroke = makeStroke(layer, C.accent, math.max(1, sc(thickness)), transparency)
+    makeGlowGradient(layerStroke)
+    return layer, layerStroke
+end
+
+local outerGlow, outerGlowStroke = createGlowLayer(14, 7, 6, 0.96)
+local middleGlow, middleGlowStroke = createGlowLayer(7, 4, 3.5, 0.9)
+local innerGlow, innerGlowStroke = createGlowLayer(2, 1, 1.5, 0.68)
 
 -- ── Main Panel ──
 local panel = Instance.new("Frame")
@@ -363,44 +384,67 @@ panel.BorderSizePixel   = 0
 panel.ClipsDescendants  = true  -- KEY: clips the header so no sharp edges poke out
 panel.ZIndex            = 2
 panel.Parent            = screenGui
-makeCorner(panel, sc(14))
+makeCorner(panel, PANEL_RADIUS)
 local panelStroke = makeStroke(panel, C.border, 1)
+
+local glowClosing = false
+local function fadeWindowChrome(duration)
+    glowClosing = true
+    tw(shadow, { BackgroundTransparency = 1 }, duration)
+    tw(outerGlowStroke, { Transparency = 1 }, duration)
+    tw(middleGlowStroke, { Transparency = 1 }, duration)
+    tw(innerGlowStroke, { Transparency = 1 }, duration)
+    tw(panelStroke, { Transparency = 1 }, duration)
+end
 
 -- ── Subtle gradient overlay on panel for depth ──
 local panelSheen = Instance.new("Frame")
-panelSheen.Size                   = UDim2.new(1, 0, 0.4, 0)
+panelSheen.Size                   = UDim2.new(1, -2, 0.4, -1)
+panelSheen.Position               = UDim2.new(0, 1, 0, 1)
 panelSheen.BackgroundColor3       = Color3.fromRGB(255, 255, 255)
 panelSheen.BackgroundTransparency = 0.97
 panelSheen.BorderSizePixel        = 0
 panelSheen.ZIndex                 = 2
 panelSheen.Parent                 = panel
+makeCorner(panelSheen, PANEL_RADIUS - 1)
 makeGradient(panelSheen, Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 0, 0), 90)
 
 -- ── Header (inside panel, clipped by panel corners) ──
 local HEADER_H = sc(72)
 
 local headerBg = Instance.new("Frame")
-headerBg.Size             = UDim2.new(1, 0, 0, HEADER_H)
-headerBg.Position         = UDim2.new(0, 0, 0, 0)
+headerBg.Size             = UDim2.new(1, -2, 0, HEADER_H - 1)
+headerBg.Position         = UDim2.new(0, 1, 0, 1)
 headerBg.BackgroundColor3 = C.header
 headerBg.BorderSizePixel  = 0
 headerBg.ZIndex           = 3
 headerBg.Parent           = panel
+makeCorner(headerBg, PANEL_RADIUS - 1)
+
+-- Only the exposed top edge stays rounded; the lower header edge remains square.
+local headerFill = Instance.new("Frame")
+headerFill.Size             = UDim2.new(1, 0, 1, -(PANEL_RADIUS - 1))
+headerFill.Position         = UDim2.new(0, 0, 0, PANEL_RADIUS - 1)
+headerFill.BackgroundColor3 = C.header
+headerFill.BorderSizePixel  = 0
+headerFill.ZIndex           = 3
+headerFill.Parent           = headerBg
 
 -- Accent gradient line at very top (thin, inside the rounded panel)
 local accentLine = Instance.new("Frame")
-accentLine.Size             = UDim2.new(1, 0, 0, 2)
-accentLine.Position         = UDim2.new(0, 0, 0, 0)
+accentLine.Size             = UDim2.new(1, -(PANEL_RADIUS * 2), 0, sc(2))
+accentLine.Position         = UDim2.new(0, PANEL_RADIUS, 0, 1)
 accentLine.BackgroundColor3 = C.accent
 accentLine.BorderSizePixel  = 0
 accentLine.ZIndex           = 10
 accentLine.Parent           = panel
+makeCorner(accentLine, sc(1))
 makeGradient(accentLine, C.accent, C.accentDim, 0)
 
 -- Header divider
 local divider = Instance.new("Frame")
-divider.Size             = UDim2.new(1, 0, 0, 1)
-divider.Position         = UDim2.new(0, 0, 0, HEADER_H)
+divider.Size             = UDim2.new(1, -2, 0, 1)
+divider.Position         = UDim2.new(0, 1, 0, HEADER_H)
 divider.BackgroundColor3 = C.border
 divider.BorderSizePixel  = 0
 divider.ZIndex           = 4
@@ -484,8 +528,7 @@ closeBtn.MouseLeave:Connect(function()
 end)
 closeBtn.MouseButton1Click:Connect(function()
     fadeAll(panel, 0.3)
-    tw(shadow, { BackgroundTransparency = 1 }, 0.3)
-    tw(panelStroke, { Transparency = 1 }, 0.3)
+    fadeWindowChrome(0.3)
     tw(overlay, { BackgroundTransparency = 1 }, 0.35)
     task.wait(0.4)
     screenGui:Destroy()
@@ -620,7 +663,14 @@ makeStroke(discordBtn, C.border, 1)
 
 panel.Position               = UDim2.new(0.5, 0, 0.5, 40)
 panel.BackgroundTransparency = 1
+shadow.Position               = UDim2.new(0.5, 0, 0.5, 44)
 shadow.BackgroundTransparency = 1
+outerGlow.Position            = UDim2.new(0.5, 0, 0.5, 40)
+middleGlow.Position           = UDim2.new(0.5, 0, 0.5, 40)
+innerGlow.Position            = UDim2.new(0.5, 0, 0.5, 40)
+outerGlowStroke.Transparency  = 1
+middleGlowStroke.Transparency = 1
+innerGlowStroke.Transparency  = 1
 panelStroke.Transparency     = 1
 
 -- Set all children transparent initially
@@ -650,10 +700,39 @@ end
 
 task.spawn(function()
     tw(panel, { Position = UDim2.new(0.5, 0, 0.5, 0), BackgroundTransparency = 0 }, 0.5, Enum.EasingStyle.Back)
-    tw(shadow, { BackgroundTransparency = 0.9 }, 0.5)
+    tw(shadow, { Position = UDim2.new(0.5, 0, 0.5, 4), BackgroundTransparency = 0.86 }, 0.5, Enum.EasingStyle.Back)
+    tw(outerGlow, { Position = UDim2.new(0.5, 0, 0.5, 0) }, 0.5, Enum.EasingStyle.Back)
+    tw(middleGlow, { Position = UDim2.new(0.5, 0, 0.5, 0) }, 0.5, Enum.EasingStyle.Back)
+    tw(innerGlow, { Position = UDim2.new(0.5, 0, 0.5, 0) }, 0.5, Enum.EasingStyle.Back)
+    tw(outerGlowStroke, { Transparency = 0.97 }, 0.5)
+    tw(middleGlowStroke, { Transparency = 0.91 }, 0.5)
+    tw(innerGlowStroke, { Transparency = 0.7 }, 0.5)
     tw(panelStroke, { Transparency = 0 }, 0.4)
     task.wait(0.1)
     showAll(panel, 0.35)
+end)
+
+task.spawn(function()
+    task.wait(0.65)
+    local breatheInfo = TweenInfo.new(3.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+    while screenGui.Parent and not glowClosing do
+        local brightenOuter = TweenService:Create(outerGlowStroke, breatheInfo, { Transparency = 0.86 })
+        local brightenMiddle = TweenService:Create(middleGlowStroke, breatheInfo, { Transparency = 0.7 })
+        local brightenInner = TweenService:Create(innerGlowStroke, breatheInfo, { Transparency = 0.4 })
+        brightenOuter:Play()
+        brightenMiddle:Play()
+        brightenInner:Play()
+        brightenInner.Completed:Wait()
+        if not screenGui.Parent or glowClosing then break end
+
+        local dimOuter = TweenService:Create(outerGlowStroke, breatheInfo, { Transparency = 0.97 })
+        local dimMiddle = TweenService:Create(middleGlowStroke, breatheInfo, { Transparency = 0.91 })
+        local dimInner = TweenService:Create(innerGlowStroke, breatheInfo, { Transparency = 0.7 })
+        dimOuter:Play()
+        dimMiddle:Play()
+        dimInner:Play()
+        dimInner.Completed:Wait()
+    end
 end)
 
 
@@ -696,6 +775,15 @@ UserInputService.InputChanged:Connect(function(input)
         }):Play()
         TweenService:Create(shadow, TweenInfo.new(0.08, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY + 4)
+        }):Play()
+        TweenService:Create(outerGlow, TweenInfo.new(0.08, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
+        }):Play()
+        TweenService:Create(middleGlow, TweenInfo.new(0.08, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
+        }):Play()
+        TweenService:Create(innerGlow, TweenInfo.new(0.08, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
         }):Play()
     end
 end)
@@ -793,8 +881,7 @@ local function onValidate()
 
             task.wait(0.8)
             fadeAll(panel, 0.35)
-            tw(shadow, { BackgroundTransparency = 1 }, 0.35)
-            tw(panelStroke, { Transparency = 1 }, 0.35)
+            fadeWindowChrome(0.35)
             tw(overlay, { BackgroundTransparency = 1 }, 0.4)
             task.wait(0.5)
             screenGui:Destroy()
