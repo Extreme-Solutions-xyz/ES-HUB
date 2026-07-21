@@ -27,9 +27,25 @@ local CONFIG = {
 -- GAME MAP
 -- ══════════════════════════════════════════════════════
 
+-- FIX (#3 Multi-Sea): Blox Fruits is split across three separate
+-- Roblox places. The loader previously only knew the First Sea id, so
+-- executing in Sea 2/3 hit the "Game not supported" path. All three
+-- official PlaceIds now map to the same Blox Fruits script, which
+-- already contains First/Second/Third Sea data internally.
 local GAMES = {
+    -- Blox Fruits -- First Sea
     [2753915549] = {
         name      = "Blox Fruits",
+        scriptURL = "https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/BloxFruitsHub.lua",
+    },
+    -- Blox Fruits -- Second Sea
+    [4442272183] = {
+        name      = "Blox Fruits (Second Sea)",
+        scriptURL = "https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/BloxFruitsHub.lua",
+    },
+    -- Blox Fruits -- Third Sea
+    [7449423635] = {
+        name      = "Blox Fruits (Third Sea)",
         scriptURL = "https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/BloxFruitsHub.lua",
     },
 }
