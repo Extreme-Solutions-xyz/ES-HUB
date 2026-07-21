@@ -82,6 +82,18 @@ S.AttackInterval   = 0.4
 S.FlySpeed         = 80   -- fly-to-enemy speed
 S.HitRange         = 10
 S.BossTarget       = "Greybeard"
+-- Combat (new v4.1)
+S.KillAura         = false
+S.KillAuraRange    = 40
+S.FastAttack       = false
+S.AutoQuest        = false
+S.AutoQuestDelay   = 2
+-- Fruit (new)
+S.FruitSniper      = false
+S.FruitSniperRange = 9999
+-- Free Fly (new)
+S.FreeFly          = false
+S.FreeFlySpeed     = 120
 
 -- Fruit
 S.FruitESP         = false
@@ -510,6 +522,274 @@ local function runFlyFarm(targetNameGetter, activeFlag, overrideRadius)
 end
 
 -- ══════════════════════════════════════════════════════
+--  COMBAT & UTILITY ENGINE
+--  New v4.1 helpers: Kill Aura, Fast Attack, Auto Quest,
+--  Fruit Sniper, Free Fly.  All reuse existing helpers
+--  (getChar/getRoot/getHum, tpTo, isWildFruit, attackEnemy)
+--  so the ES feel stays consistent and behaviour is
+--  predictable across respawns.
+
+-- ──────────────────────────────────────────────────────────
+--  KILL AURA
+--  Attacks EVERY living enemy within range on a tight loop.
+--  Uses the same attackEnemy() routine as Auto Farm so the
+--  damage path is identical; only the targeting is broader.
+-- ──────────────────────────────────────────────────────────
+
+local function startKillAura()
+    disconnectKey("killAura")
+    connections["killAura"] = RunService.Heartbeat:Connect(function()
+        if not S.KillAura then return end
+        local myRoot = getRoot()
+        if not myRoot then return end
+        rebuildEnemyCache()
+        for _, entry in ipairs(enemyCache) do
+            if entry.hum and entry.hum.Health > 0 and entry.root and entry.root.Parent then
+                local dist = (myRoot.Position - entry.root.Position).Magnitude
+                if dist <= S.KillAuraRange then
+                    pcall(attackEnemy, entry.model, entry.root)
+                end
+            end
+        end
+    end)
+end
+
+-- ──────────────────────────────────────────────────────────
+--  FAST ATTACK
+--  Spams the equipped tool's Activate + combat remote at a
+--  higher rate than the normal attack interval so melee
+--  combos come out much faster.  Heartbeat-driven, pcall
+--  guarded, degrades to a no-op if no tool is equipped.
+-- ──────────────────────────────────────────────────────────
+
+local function startFastAttack()
+    disconnectKey("fastAttack")
+    connections["fastAttack"] = RunService.Heartbeat:Connect(function()
+        if not S.FastAttack then return end
+        local char = getChar(); if not char then return end
+        local tool = char:FindFirstChildOfClass("Tool")
+        if not tool then
+            tool = player.Backpack:FindFirstChildOfClass("Tool")
+            if tool then tool.Parent = char; task.wait(0.02) end
+        end
+        if not tool then return end
+        pcall(function() tool:Activate() end)
+        -- Fire every combat-related RemoteEvent on the tool
+        for _, r in ipairs(tool:GetDescendants()) do
+            if r:IsA("RemoteEvent") then
+                local root = getRoot()
+                if root then
+                    pcall(function() r:FireServer(root.CFrame) end)
+                end
+            end
+        end
+    end)
+end
+
+-- ──────────────────────────────────────────────────────────
+--  AUTO QUEST
+--  Periodically accepts the nearest quest and turns in the
+--  current quest so Auto Farm can keep gaining XP without
+--  manual interaction.  Defensive: every remote lookup is
+--  pcall-wrapped and silently skipped if the game's remote
+--  layout changes in a future update.
+-- ──────────────────────────────────────────────────────────
+
+-- Common Blox Fruits quest remote paths (kept broad + guarded).
+local function findQuestRemotes()
+    local remotes = {}
+    local RS = game:GetService("ReplicatedStorage")
+    -- Try a few well-known locations for quest / dialog remotes.
+    local candidates = {
+        "Remotes",
+        "CommF_",
+        "Server",
+        "Quests",
+    }
+    for _, name in ipairs(candidates) do
+        local folder = RS:FindFirstChild(name)
+        if folder and folder:IsA("Instance") then
+            for _, r in ipairs(folder:GetDescendants()) do
+                if r:IsA("RemoteEvent") then
+                    local ln = r.Name:lower()
+                    if ln:find("quest") or ln:find("dialog") or ln:find("request")
+                    or ln:find("start") or ln:find("progress") then
+                        table.insert(remotes, r)
+                    end
+                end
+            end
+        end
+    end
+    -- Also scan Workspace for NPC-bound dialog remotes.
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            local ln = obj.Name:lower()
+            if ln:find("quest") or ln:find("dialog") then
+                table.insert(remotes, obj)
+            end
+        end
+        if #remotes > 30 then break end
+    end
+    return remotes
+end
+
+local function startAutoQuest()
+    disconnectKey("autoQuest")
+    connections["autoQuest"] = task.spawn(function()
+        while S.AutoQuest do
+            local root = getRoot()
+            if root then
+                local remotes = findQuestRemotes()
+                if #remotes > 0 then
+                    for _, r in ipairs(remotes) do
+                        pcall(function() r:FireServer() end)
+                        pcall(function() r:FireServer("Start") end)
+                        pcall(function() r:FireServer("Progress") end)
+                    end
+                end
+            end
+            task.wait(math.max(0.5, S.AutoQuestDelay or 2))
+        end
+    end)
+end
+
+-- ──────────────────────────────────────────────────────────
+--  FRUIT SNIPER
+--  Instantly teleports to the nearest wild fruit (rare fruits
+--  prioritised) and collects it, faster than the slow
+--  Auto-Collect loop.  Honours a per-snipe distance limit so
+--  you only chase fruits you actually want.
+-- ──────────────────────────────────────────────────────────
+
+local RARE_FRUIT_WORDS = {
+    "dragon","leopard","kitsune","dough","shadow","mammoth",
+    "t-rex","gas","portal","venom","spirit","control",
+    "buddha","phoenix","blizzard","rumble","gravity",
+}
+
+local function fruitRarityScore(name)
+    local low = name:lower()
+    for _, w in ipairs(RARE_FRUIT_WORDS) do
+        if low:find(w) then return 2 end   -- rare
+    end
+    if isFruitName(name) then return 1 end  -- common
+    return 0
+end
+
+local function startFruitSniper()
+    disconnectKey("fruitSniper")
+    connections["fruitSniper"] = task.spawn(function()
+        while S.FruitSniper do
+            local root = getRoot()
+            if root then
+                local best, bestScore, bestPart, bestDist
+                for _, obj in ipairs(Workspace:GetDescendants()) do
+                    if isWildFruit(obj) then
+                        local part = obj:IsA("Model")
+                            and (obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart"))
+                            or obj
+                        if part and part.Parent then
+                            local dist = (root.Position - part.Position).Magnitude
+                            if dist <= S.FruitSniperRange then
+                                local score = fruitRarityScore(obj.Name)
+                                if not bestScore
+                                or score > bestScore
+                                or (score == bestScore and dist < bestDist) then
+                                    best, bestScore, bestPart, bestDist
+                                        = obj, score, part, dist
+                                end
+                            end
+                        end
+                    end
+                end
+                if best and bestPart and bestPart.Parent then
+                    tpTo(bestPart.CFrame + Vector3.new(0, 3, 0), 0)
+                    task.wait(0.2)
+                    local parentObj = best:IsA("Model") and best or best.Parent
+                    for _, d in ipairs(parentObj:GetDescendants()) do
+                        if d:IsA("ClickDetector") then pcall(fireclickdetector, d) end
+                        if d:IsA("ProximityPrompt") then pcall(fireproximityprompt, d) end
+                    end
+                    local remote = parentObj:FindFirstChildOfClass("RemoteEvent")
+                    if remote then pcall(function() remote:FireServer() end) end
+                    task.wait(0.3)
+                end
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+-- ──────────────────────────────────────────────────────────
+--  FREE FLY  (manual WASD + camera fly)
+--  Smooth, controller-style free flight bound to a toggle.
+--  BodyVelocity + BodyGyro, cleaned up on disable / respawn.
+-- ──────────────────────────────────────────────────────────
+
+local function startFreeFly()
+    disconnectKey("freeFly")
+    local root = getRoot()
+    if not root then return end
+
+    -- Remove old body movers we may have left.
+    for _, v in ipairs(root:GetChildren()) do
+        if v:IsA("BodyVelocity") or v:IsA("BodyGyro") then v:Destroy() end
+    end
+
+    local bv = Instance.new("BodyVelocity")
+    bv.Name = "ESFreeFlyBV"
+    bv.MaxForce = Vector3.new(9e4, 9e4, 9e4)
+    bv.Velocity = Vector3.zero
+    bv.Parent = root
+
+    local bg = Instance.new("BodyGyro")
+    bg.Name = "ESFreeFlyBG"
+    bg.MaxTorque = Vector3.new(9e4, 9e4, 9e4)
+    bg.P = 9e4
+    bg.CFrame = root.CFrame
+    bg.Parent = root
+
+    local function stopFly()
+        for _, v in ipairs(root:GetChildren()) do
+            if v.Name == "ESFreeFlyBV" or v.Name == "ESFreeFlyBG" then
+                pcall(function() v:Destroy() end)
+            end
+        end
+    end
+
+    connections["freeFly"] = RunService.RenderStepped:Connect(function()
+        if not S.FreeFly then
+            stopFly()
+            disconnectKey("freeFly")
+            return
+        end
+        local r = getRoot()
+        if not r then stopFly(); disconnectKey("freeFly"); return end
+        if bv.Parent ~= r then
+            bv.Parent = r
+            bg.Parent = r
+        end
+        -- Align body to camera look direction.
+        bg.CFrame = CFrame.new(r.Position, camera.CFrame.LookVector + r.Position)
+
+        local move = Vector3.zero
+        local fwd = camera.CFrame.LookVector
+        local right = camera.CFrame.RightVector
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + fwd end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - fwd end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + right end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - right end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0, 1, 0) end
+
+        if move.Magnitude > 0 then
+            bv.Velocity = move.Unit * S.FreeFlySpeed
+        else
+            bv.Velocity = Vector3.zero
+        end
+    end)
+end
 --  ESP HELPERS
 -- ══════════════════════════════════════════════════════
 
@@ -850,6 +1130,42 @@ PlayerTab:CreateSlider({
 })
 
 -- ══════════════════════════════════════════════════════
+--  FREE FLY (v4.1)
+PlayerTab:CreateSection("Free Fly")
+
+PlayerTab:CreateToggle({
+    Name         = "Free Fly (WASD)",
+    CurrentValue = false,
+    Flag         = "FreeFly",
+    Callback = function(v)
+        S.FreeFly = v
+        if v then
+            startFreeFly()
+            notify("Free Fly", "WASD to fly, Space/Shift for up/down.", "success")
+        else
+            local r = getRoot()
+            if r then
+                for _, x in ipairs(r:GetChildren()) do
+                    if x.Name == "ESFreeFlyBV" or x.Name == "ESFreeFlyBG" then
+                        pcall(function() x:Destroy() end)
+                    end
+                end
+            end
+            disconnectKey("freeFly")
+            notify("Free Fly", "Disabled.")
+        end
+    end
+})
+
+PlayerTab:CreateSlider({
+    Name         = "Fly Speed",
+    Range        = {20, 500},
+    Increment    = 5,
+    Suffix       = " studs/s",
+    CurrentValue = 120,
+    Flag         = "FreeFlySpeed",
+    Callback = function(v) S.FreeFlySpeed = v end
+})
 --  FARM TAB
 -- ══════════════════════════════════════════════════════
 
@@ -1012,6 +1328,78 @@ FarmTab:CreateToggle({
 })
 
 -- ══════════════════════════════════════════════════════
+--  COMBAT TAB ADDITIONS (v4.1)
+FarmTab:CreateSection("Combat")
+
+FarmTab:CreateToggle({
+    Name         = "Kill Aura",
+    CurrentValue = false,
+    Flag         = "KillAura",
+    Callback = function(v)
+        S.KillAura = v
+        if v then
+            startKillAura()
+            notify("Kill Aura", "Attacking all enemies within range.", "success")
+        else
+            disconnectKey("killAura")
+            notify("Kill Aura", "Disabled.")
+        end
+    end
+})
+
+FarmTab:CreateSlider({
+    Name         = "Kill Aura Range",
+    Range        = {10, 200},
+    Increment    = 5,
+    Suffix       = " studs",
+    CurrentValue = 40,
+    Flag         = "KillAuraRange",
+    Callback = function(v) S.KillAuraRange = v end
+})
+
+FarmTab:CreateToggle({
+    Name         = "Fast Attack",
+    CurrentValue = false,
+    Flag         = "FastAttack",
+    Callback = function(v)
+        S.FastAttack = v
+        if v then
+            startFastAttack()
+            notify("Fast Attack", "Attack speed boosted.", "success")
+        else
+            disconnectKey("fastAttack")
+            notify("Fast Attack", "Disabled.")
+        end
+    end
+})
+
+FarmTab:CreateSection("Auto Quest")
+
+FarmTab:CreateToggle({
+    Name         = "Auto Quest",
+    CurrentValue = false,
+    Flag         = "AutoQuest",
+    Callback = function(v)
+        S.AutoQuest = v
+        if v then
+            startAutoQuest()
+            notify("Auto Quest", "Accepting & turning in quests automatically.", "success")
+        else
+            disconnectKey("autoQuest")
+            notify("Auto Quest", "Disabled.")
+        end
+    end
+})
+
+FarmTab:CreateSlider({
+    Name         = "Quest Check Interval",
+    Range        = {1, 10},
+    Increment    = 1,
+    Suffix       = " s",
+    CurrentValue = 2,
+    Flag         = "AutoQuestDelay",
+    Callback = function(v) S.AutoQuestDelay = v end
+})
 --  TELEPORT TAB
 -- ══════════════════════════════════════════════════════
 
@@ -1574,6 +1962,31 @@ FruitTab:CreateButton({
 })
 
 -- ══════════════════════════════════════════════════════
+FruitTab:CreateToggle({
+    Name         = "Fruit Sniper",
+    CurrentValue = false,
+    Flag         = "FruitSniper",
+    Callback = function(v)
+        S.FruitSniper = v
+        if v then
+            startFruitSniper()
+            notify("Fruit Sniper", "Sniping nearest wild fruit (rare first).", "success")
+        else
+            disconnectKey("fruitSniper")
+            notify("Fruit Sniper", "Disabled.")
+        end
+    end
+})
+
+FruitTab:CreateSlider({
+    Name         = "Sniper Range",
+    Range        = {500, 30000},
+    Increment    = 500,
+    Suffix       = " studs",
+    CurrentValue = 9999,
+    Flag         = "FruitSniperRange",
+    Callback = function(v) S.FruitSniperRange = v end
+})
 --  VISUALS TAB
 -- ══════════════════════════════════════════════════════
 
@@ -1918,7 +2331,7 @@ MiscTab:CreateSection("Credits")
 
 MiscTab:CreateParagraph({
     Title   = "Extreme Solutions  ·  Blox Fruits Hub",
-    Content = "Developed by Extreme Solutions\nUI powered by ESLib (custom)\n\nToggle Menu: K\n\n── Features ──\n• Player: Speed · Jump · Inf Jump · No Clip · God Mode · Anti-KB\n• Farm: Auto Farm · Boss Farm · Mastery Farm (fly locomotion)\n• Teleport: All 3 seas + Café · Mansion · Mirage Island\n• ESP: Fruit · Player · Chest  (fully customisable)\n• Visuals: Full Bright · Time of Day · FOV · Zoom · Character hide\n• Misc: Server hop · Anti-AFK · Clipboard tools\n\nJoin our Discord for updates and support."
+    Content = "Developed by Extreme Solutions\nUI powered by ESLib (custom)\n\nToggle Menu: K\n\n── Features ──\n• Player: Speed · Jump · Inf Jump · No Clip · God Mode · Anti-KB · Free Fly\n• Farm: Auto Farm · Boss Farm · Mastery Farm · Kill Aura · Fast Attack · Auto Quest\n• Teleport: All 3 seas + Café · Mansion · Mirage Island\n• Fruit: Fruit ESP · Auto Collect · Fruit Sniper\n• Visuals: Full Bright · Time of Day · FOV · Zoom · Character hide\n• Misc: Server hop · Anti-AFK · Clipboard tools\n\nJoin our Discord for updates and support."
 })
 
 -- ══════════════════════════════════════════════════════
@@ -1943,6 +2356,12 @@ player.CharacterAdded:Connect(function(char)
         end)
     end
     startSpeedEnforce()
+    -- Re-start persistent combat/utility loops on respawn.
+    if S.KillAura then startKillAura() end
+    if S.FastAttack then startFastAttack() end
+    if S.AutoQuest then startAutoQuest() end
+    if S.FruitSniper then startFruitSniper() end
+    if S.FreeFly then startFreeFly() end
     invalidateCache()
 end)
 
