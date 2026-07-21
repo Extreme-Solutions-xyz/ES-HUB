@@ -39,8 +39,26 @@ local TeleportService  = game:GetService("TeleportService")
 local Workspace        = game:GetService("Workspace")
 local HttpService      = game:GetService("HttpService")
 
+-- FIX (#4 lifecycle): LocalPlayer can momentarily be nil if the script
+-- injects before the client player replicates. Wait for it instead of
+-- indexing a possibly-nil value (which would hard-error the whole hub).
 local player = Players.LocalPlayer
-local camera = Workspace.CurrentCamera
+if not player then
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    player = Players.LocalPlayer
+end
+
+-- FIX (#4 lifecycle): CurrentCamera can be nil for a frame on join.
+-- Resolve it safely and keep a helper so any later consumer always
+-- gets a live camera rather than a stale/nil reference.
+local function getCamera()
+    return Workspace.CurrentCamera
+end
+local camera = getCamera()
+if not camera then
+    Workspace:GetPropertyChangedSignal("CurrentCamera"):Wait()
+    camera = getCamera()
+end
 
 -- ══════════════════════════════════════════════════════
 --  TABS
@@ -652,24 +670,60 @@ end
 --  guarded, degrades to a no-op if no tool is equipped.
 -- ──────────────────────────────────────────────────────────
 
--- Locate the single most likely "attack" RemoteEvent on a tool once,
--- rather than blindly firing every remote inside it every frame.
+-- FIX (#2 Fast Attack): score every RemoteEvent on the tool and return
+-- only the best genuine "attack" remote. The previous fallback grabbed
+-- the FIRST RemoteEvent it found, which could be an unrelated remote
+-- (e.g. an animation-sync, cooldown, or UI event) and fire garbage at
+-- the server. We now:
+--   * strongly reward attack/combat words,
+--   * penalise clearly non-combat words (equip/reload/cooldown/etc.),
+--   * cache the result per-tool so we don't re-scan every tick,
+--   * and return nil (graceful skip) when nothing looks like an attack.
+
+-- Positive/negative keyword weights for scoring a tool remote.
+local ATTACK_POS = {
+    ["attack"]=6, ["combat"]=6, ["hit"]=5, ["swing"]=5, ["melee"]=5,
+    ["damage"]=4, ["slash"]=4, ["click"]=3, ["m1"]=3, ["use"]=2,
+}
+local ATTACK_NEG = {
+    ["equip"]=-6, ["unequip"]=-6, ["reload"]=-5, ["cooldown"]=-5,
+    ["animation"]=-4, ["anim"]=-4, ["ui"]=-4, ["sound"]=-4,
+    ["skill"]=-2, ["block"]=-2, ["charge"]=-2, ["reset"]=-3,
+}
+
+local function scoreAttackRemote(name)
+    local ln = name:lower()
+    local score = 0
+    for word, w in pairs(ATTACK_POS) do
+        if ln:find(word, 1, true) then score = score + w end
+    end
+    for word, w in pairs(ATTACK_NEG) do
+        if ln:find(word, 1, true) then score = score + w end
+    end
+    return score
+end
+
+-- Per-tool cache so scanning only happens once per equipped tool.
+local combatRemoteCache = setmetatable({}, { __mode = "k" })
+
 local function findToolCombatRemote(tool)
-    -- Prefer a remote whose name hints at combat/attack/hit.
+    local cached = combatRemoteCache[tool]
+    if cached and cached.Parent then return cached end
+
+    local best, bestScore = nil, 0   -- require a POSITIVE score to qualify
     for _, r in ipairs(tool:GetDescendants()) do
         if r:IsA("RemoteEvent") then
-            local ln = r.Name:lower()
-            if ln:find("attack") or ln:find("hit") or ln:find("combat")
-            or ln:find("swing") or ln:find("damage") then
-                return r
+            local s = scoreAttackRemote(r.Name)
+            if s > bestScore then
+                best, bestScore = r, s
             end
         end
     end
-    -- Fall back to the first RemoteEvent found anywhere in the tool.
-    for _, r in ipairs(tool:GetDescendants()) do
-        if r:IsA("RemoteEvent") then return r end
-    end
-    return nil
+
+    -- Graceful skip: if nothing scored above zero, there is no remote we
+    -- can confidently treat as an attack, so return nil and fire nothing.
+    if best then combatRemoteCache[tool] = best end
+    return best
 end
 
 local FAST_ATTACK_INTERVAL = 0.07   -- ~14 attacks/sec, not every frame
@@ -733,9 +787,88 @@ local function getCommRemote()
     return nil
 end
 
--- Known safe CommF_ commands used to progress the standard quest loop.
--- InvokeServer for RemoteFunctions, FireServer for RemoteEvents.
+-- Known safe CommF_ commands. StartQuest expects (questGiverName, tier);
+-- AbandonQuest takes no useful args and must ONLY fire when we actually
+-- hold a quest, otherwise it needlessly spams the server.
 local QUEST_COMMANDS = { "StartQuest", "AbandonQuest" }
+
+-- FIX (#1 Auto Quest): read the player's real level so we can pick the
+-- correct quest tier instead of guessing 1..3. Blox Fruits exposes the
+-- level in a few known spots depending on build; we try each safely.
+local function getPlayerLevel()
+    -- 1) player.Data.Level.Value  (most common in current builds)
+    local data = player:FindFirstChild("Data")
+    if data then
+        local lvl = data:FindFirstChild("Level")
+        if lvl and typeof(lvl.Value) == "number" then return lvl.Value end
+    end
+    -- 2) leaderstats.Level.Value
+    local ls = player:FindFirstChild("leaderstats")
+    if ls then
+        local lvl = ls:FindFirstChild("Level")
+        if lvl and typeof(lvl.Value) == "number" then return lvl.Value end
+    end
+    -- 3) attribute fallback
+    local attr = player:GetAttribute("Level")
+    if typeof(attr) == "number" then return attr end
+    return nil   -- unknown: caller must handle gracefully
+end
+
+-- FIX (#1 Auto Quest): map a level to the correct quest-giver + tier.
+-- Each entry = { name = <StartQuest giver id>, min, max, tier }.
+-- `tier` is the 1-based quest index at that giver appropriate for the
+-- level band, so StartQuest is called with a VALID, level-matched tier
+-- rather than looping 1..3 blindly. Bands cover the main story islands.
+local QUEST_TABLE = {
+    { name = "BoneMerchant2",   min = 1,    max = 9,    tier = 1 },
+    { name = "ColosseumQuestGiver1", min = 10,   max = 14,   tier = 1 },
+    { name = "ColosseumQuestGiver1", min = 15,   max = 29,   tier = 2 },
+    { name = "JungleQuestGiver1",    min = 30,   max = 39,   tier = 1 },
+    { name = "JungleQuestGiver1",    min = 40,   max = 59,   tier = 2 },
+    { name = "PirateQuestGiver1",    min = 60,   max = 89,   tier = 1 },
+    { name = "PirateQuestGiver1",    min = 90,   max = 99,   tier = 2 },
+    { name = "DesertQuestGiver",     min = 100,  max = 119,  tier = 1 },
+    { name = "DesertQuestGiver",     min = 120,  max = 149,  tier = 2 },
+    { name = "SnowQuestGiver",       min = 150,  max = 174,  tier = 1 },
+    { name = "SnowQuestGiver",       min = 175,  max = 224,  tier = 2 },
+    { name = "MarineQuestGiver",     min = 225,  max = 274,  tier = 1 },
+    { name = "SkyQuestGiver1",       min = 275,  max = 324,  tier = 1 },
+    { name = "SkyQuestGiver1",       min = 325,  max = 449,  tier = 2 },
+    { name = "PrisonQuestGiver",     min = 450,  max = 624,  tier = 1 },
+    { name = "ColosseumQuestGiver2", min = 625,  max = 699,  tier = 1 },
+    { name = "MagmaQuestGiver",      min = 700,  max = 824,  tier = 1 },
+    { name = "MagmaQuestGiver",      min = 825,  max = 949,  tier = 2 },
+    { name = "FishmanQuestGiver1",   min = 950,  max = 1049, tier = 1 },
+    { name = "SkyExp1QuestGiver",    min = 1050, max = 1424, tier = 1 },
+    { name = "FountainQuestGiver",   min = 1425, max = 9999, tier = 1 },
+}
+
+-- Return { name, tier } appropriate for `level`, or nil if unknown.
+local function questForLevel(level)
+    if not level then return nil end
+    for _, q in ipairs(QUEST_TABLE) do
+        if level >= q.min and level <= q.max then
+            return q
+        end
+    end
+    return nil
+end
+
+-- FIX (#1 Auto Quest): detect whether the player is CURRENTLY on a quest
+-- so we only StartQuest when idle and only AbandonQuest when we hold one.
+-- Blox Fruits mirrors the active quest into the player's Data folder.
+local function hasActiveQuest()
+    local data = player:FindFirstChild("Data")
+    if data then
+        local q = data:FindFirstChild("Quest") or data:FindFirstChild("CurrentQuest")
+        if q then
+            if typeof(q.Value) == "string" then return q.Value ~= "" end
+            if typeof(q.Value) == "boolean" then return q.Value end
+            if q:GetChildren()[1] then return true end
+        end
+    end
+    return false
+end
 
 local function fireComm(remote, ...)
     if not remote then return end
@@ -771,23 +904,38 @@ end
 local function startAutoQuest()
     startTask("autoQuest", function(isCurrent)
         while S.AutoQuest and isCurrent() do
-            local root = getRoot()
+            local root   = getRoot()
             local remote = getCommRemote()
+
             if root and remote then
-                -- If a quest-giver is close, try to start its quest by name.
-                local npc = nearestQuestGiver(root)
-                if npc then
-                    -- Blox Fruits StartQuest expects (questName, tier).
-                    for tier = 1, 3 do
-                        fireComm(remote, "StartQuest", npc.Name, tier)
-                    end
-                else
-                    -- No giver nearby: nudge the generic commands, guarded.
-                    for _, cmd in ipairs(QUEST_COMMANDS) do
-                        fireComm(remote, cmd)
+                -- FIX (#1 Auto Quest): only touch quests when we can act
+                -- meaningfully. If we already hold a quest, do NOTHING —
+                -- the old code fired StartQuest x3 and AbandonQuest every
+                -- cycle, which could abandon an in-progress quest or start
+                -- the wrong tier.
+                if not hasActiveQuest() then
+                    -- Prefer a precise, level-matched quest tier.
+                    local level = getPlayerLevel()
+                    local q = questForLevel(level)
+
+                    if q then
+                        -- Start EXACTLY the level-appropriate quest & tier.
+                        fireComm(remote, "StartQuest", q.name, q.tier)
+                    else
+                        -- Level unknown (build without a readable Data.Level):
+                        -- fall back to the nearest quest-giver's FIRST tier
+                        -- only. We never sweep tiers 1..3 blindly anymore.
+                        local npc = nearestQuestGiver(root)
+                        if npc then
+                            fireComm(remote, "StartQuest", npc.Name, 1)
+                        end
                     end
                 end
+                -- NOTE: AbandonQuest is intentionally NOT fired here. It is
+                -- destructive and is only exposed via the explicit
+                -- "Abandon Quest" button so the user stays in control.
             end
+
             task.wait(math.max(1, S.AutoQuestDelay or 2))
         end
     end)
@@ -909,11 +1057,15 @@ local function startFreeFly()
             bg.Parent = r
         end
         -- Align body to camera look direction.
-        bg.CFrame = CFrame.new(r.Position, camera.CFrame.LookVector + r.Position)
+        -- FIX (#4 lifecycle): re-fetch the camera each frame so a camera
+        -- swap (respawn/spectate) never leaves us steering off a dead ref.
+        local cam = getCamera()
+        if not cam then return end
+        bg.CFrame = CFrame.new(r.Position, cam.CFrame.LookVector + r.Position)
 
         local move = Vector3.zero
-        local fwd = camera.CFrame.LookVector
-        local right = camera.CFrame.RightVector
+        local fwd = cam.CFrame.LookVector
+        local right = cam.CFrame.RightVector
 
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + fwd end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - fwd end
@@ -1538,6 +1690,27 @@ FarmTab:CreateSlider({
     CurrentValue = 2,
     Flag         = "AutoQuestDelay",
     Callback = function(v) S.AutoQuestDelay = v end
+})
+
+-- FIX (#1 Auto Quest): AbandonQuest is destructive, so expose it as an
+-- explicit, user-triggered button instead of firing it automatically
+-- every cycle like the old loop did. It only fires when the player
+-- actually holds a quest.
+FarmTab:CreateButton({
+    Name = "Abandon Current Quest",
+    Callback = function()
+        local remote = getCommRemote()
+        if not remote then
+            notify("Auto Quest", "Quest remote not found.", "warning")
+            return
+        end
+        if hasActiveQuest() then
+            fireComm(remote, "AbandonQuest")
+            notify("Auto Quest", "Abandoned current quest.", "success")
+        else
+            notify("Auto Quest", "No active quest to abandon.")
+        end
+    end
 })
 --  TELEPORT TAB
 -- ══════════════════════════════════════════════════════
@@ -2178,7 +2351,11 @@ VisualTab:CreateSlider({
     Suffix       = " deg",
     CurrentValue = 70,
     Flag         = "FOV",
-    Callback = function(v) camera.FieldOfView = v end
+    Callback = function(v)
+        -- FIX (#4 lifecycle): apply to the current camera, not a stale local.
+        local cam = getCamera()
+        if cam then cam.FieldOfView = v end
+    end
 })
 
 VisualTab:CreateSlider({
@@ -2455,9 +2632,12 @@ MiscTab:CreateToggle({
         if v then
             local VR = game:GetService("VirtualUser")
             connections["antiAFK"] = player.Idled:Connect(function()
-                VR:Button2Down(Vector2.new(0,0), camera.CFrame)
+                -- FIX (#4 lifecycle): fetch a live camera CFrame each idle.
+                local cam = getCamera()
+                local cf = cam and cam.CFrame or CFrame.new()
+                VR:Button2Down(Vector2.new(0,0), cf)
                 task.wait(0.1)
-                VR:Button2Up(Vector2.new(0,0), camera.CFrame)
+                VR:Button2Up(Vector2.new(0,0), cf)
             end)
             notify("Anti-AFK", "Won't be kicked for being idle.")
         else
