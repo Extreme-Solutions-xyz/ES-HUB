@@ -607,25 +607,51 @@ local function runFlyFarm(targetNameGetter, activeFlag, overrideRadius)
 
                 local flyConn = flyTo(attackPos, function() arrived = true end)
 
-                -- Wait until arrived or enemy dies / disappears
-                local timeout = tick() + 8
-                while not arrived and tick() < timeout and activeFlag() do
-                    -- Check enemy still alive
-                    local h = enemy:FindFirstChildOfClass("Humanoid")
-                    if not h or h.Health <= 0 or not eRoot.Parent then
-                        if flyConn then pcall(function() flyConn:Disconnect() end) end
-                        -- Clean up body movers
-                        local r = getRoot()
-                        if r then
-                            for _, v in ipairs(r:GetChildren()) do
-                                if v:IsA("BodyVelocity") or v:IsA("BodyGyro") then v:Destroy() end
-                            end
+                -- FIX (#2 connection leak): a single idempotent cleanup that
+                -- ALWAYS disconnects the Heartbeat callback and destroys the
+                -- body movers. flyTo() self-disconnects only when it reaches
+                -- the target or the root disappears; every OTHER way this
+                -- flight can end (timeout, Auto Farm turned off, enemy death,
+                -- an error) previously left `flyConn` connected forever,
+                -- leaking one Heartbeat callback per enemy chased. Routing
+                -- all exits through cleanup() guarantees exactly one
+                -- disconnect regardless of how the flight ends.
+                local cleaned = false
+                local function cleanup()
+                    if cleaned then return end
+                    cleaned = true
+                    -- flyConn may already be disconnected by flyTo(); Disconnect
+                    -- is safe to call twice, and pcall shields us either way.
+                    if flyConn then pcall(function() flyConn:Disconnect() end) end
+                    local r = getRoot()
+                    if r then
+                        for _, v in ipairs(r:GetChildren()) do
+                            if v:IsA("BodyVelocity") or v:IsA("BodyGyro") then v:Destroy() end
                         end
-                        invalidateCache()
-                        break
                     end
-                    task.wait(0.05)
                 end
+
+                -- Wait until arrived or enemy dies / disappears. We pcall the
+                -- whole wait so that even an unexpected error still reaches the
+                -- guaranteed cleanup() below instead of leaking the connection.
+                local timeout = tick() + 8
+                pcall(function()
+                    while not arrived and tick() < timeout and activeFlag() do
+                        -- Check enemy still alive
+                        local h = enemy:FindFirstChildOfClass("Humanoid")
+                        if not h or h.Health <= 0 or not eRoot.Parent then
+                            invalidateCache()
+                            break
+                        end
+                        task.wait(0.05)
+                    end
+                end)
+
+                -- FIX (#2 connection leak): disconnect on EVERY exit path
+                -- (arrived, 8s timeout, activeFlag()==false, enemy death, or
+                -- an error inside the wait loop). This runs unconditionally
+                -- right after the loop, before we attack.
+                cleanup()
 
                 -- Attack if still valid
                 if arrived and activeFlag() then
@@ -988,14 +1014,30 @@ local function hasActiveQuest()
     return q:GetChildren()[1] ~= nil
 end
 
+-- FIX (#1 Auto Quest): fireComm now REPORTS its outcome instead of
+-- silently swallowing every result. It returns:
+--     ok        -> boolean: did the remote call itself run without erroring?
+--     response  -> for RemoteFunctions, the server's return value (Blox
+--                  Fruits' CommF_ returns a value / errors on a rejected
+--                  quest). For RemoteEvents there is no response (nil).
+-- The caller uses this to tell "the server accepted my quest id" apart from
+-- "the server rejected it", so Auto Quest can fall back to the nearest giver
+-- instead of retrying a bad id forever.
 local function fireComm(remote, ...)
-    if not remote then return end
+    if not remote then return false, nil end
     local args = table.pack(...)
     if remote:IsA("RemoteFunction") then
-        pcall(function() remote:InvokeServer(table.unpack(args, 1, args.n)) end)
+        local ok, response = pcall(function()
+            return remote:InvokeServer(table.unpack(args, 1, args.n))
+        end)
+        return ok, response
     elseif remote:IsA("RemoteEvent") then
-        pcall(function() remote:FireServer(table.unpack(args, 1, args.n)) end)
+        local ok = pcall(function()
+            remote:FireServer(table.unpack(args, 1, args.n))
+        end)
+        return ok, nil
     end
+    return false, nil
 end
 
 -- Find the quest-giver NPC nearest the player so we can pass a valid
@@ -1019,6 +1061,47 @@ local function nearestQuestGiver(root)
     return best, bestDist
 end
 
+-- FIX (#1 Auto Quest): remember quest-giver ids the server has rejected so
+-- we never retry a bad/uncertain id in a tight loop. Keyed by "name|tier".
+-- Once an id is in here we skip straight to the nearest-giver fallback for
+-- that level band. Also flag it once (notify) so it can be reviewed.
+local badQuestIds = {}
+local loggedBadQuestIds = {}
+
+-- Helper: attempt to start a configured quest id and confirm it took.
+-- Returns true only if the server ACCEPTED the quest (i.e. we are now on a
+-- quest); returns false on a rejection so the caller can fall back.
+local function tryStartConfiguredQuest(remote, q)
+    local key = tostring(q.name) .. "|" .. tostring(q.tier)
+    if badQuestIds[key] then return false end   -- known-bad: don't even try
+
+    local ok, response = fireComm(remote, "StartQuest", q.name, q.tier)
+
+    -- Give the server a brief moment to mirror the quest into Data, then
+    -- confirm. A rejected StartQuest either errors (ok == false) or simply
+    -- fails to put us on a quest (hasActiveQuest() stays false). Blox Fruits'
+    -- CommF_ can also return false / an error string on a bad giver name.
+    task.wait(0.35)
+    local rejected =
+        (not ok)
+        or (type(response) == "boolean" and response == false)
+        or (not hasActiveQuest())
+
+    if rejected then
+        -- Remember it so we stop hammering the same bad id, and surface it
+        -- once for review instead of looping silently forever.
+        badQuestIds[key] = true
+        if not loggedBadQuestIds[key] then
+            loggedBadQuestIds[key] = true
+            notify("Auto Quest",
+                "Quest id rejected (" .. key .. ") - using nearest giver instead.",
+                "warning")
+        end
+        return false
+    end
+    return true
+end
+
 local function startAutoQuest()
     startTask("autoQuest", function(isCurrent)
         while S.AutoQuest and isCurrent() do
@@ -1036,13 +1119,22 @@ local function startAutoQuest()
                     local level = getPlayerLevel()
                     local q = questForLevel(level)
 
+                    -- FIX (#1 Auto Quest): try the configured id, but VERIFY it
+                    -- was accepted. `started` is false when the level is
+                    -- unknown, when the id is known-bad, OR when the server
+                    -- rejected it just now. In every one of those cases we
+                    -- drop through to the nearest-giver fallback, instead of
+                    -- looping forever on a bad id (the old code only fell back
+                    -- when the level was unavailable).
+                    local started = false
                     if q then
-                        -- Start EXACTLY the level-appropriate quest & tier.
-                        fireComm(remote, "StartQuest", q.name, q.tier)
-                    else
-                        -- Level unknown (build without a readable Data.Level):
-                        -- fall back to the nearest quest-giver's FIRST tier
-                        -- only. We never sweep tiers 1..3 blindly anymore.
+                        started = tryStartConfiguredQuest(remote, q)
+                    end
+
+                    if not started then
+                        -- Fallback: physically nearest quest-giver NPC, tier 1.
+                        -- Its name comes straight from the world so it is
+                        -- always a valid giver id for wherever we are standing.
                         local npc = nearestQuestGiver(root)
                         if npc then
                             fireComm(remote, "StartQuest", npc.Name, 1)
