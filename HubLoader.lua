@@ -13,9 +13,11 @@ local CONFIG = {
     APIBaseURL  = "https://extremesolutionskeysystem-production.up.railway.app",
     OfflineKeys = {},
     OfflineMode = {
-        Enabled = false,
-        Key = "",
-        Message = "Offline validation is disabled.",
+        -- Temporary development access while the Railway service is unavailable.
+        -- Disable this again before treating the key system as production-ready.
+        Enabled = true,
+        Key = "ES-OFFLINE-DEV",
+        Message = "Development key accepted while the key server is offline.",
     },
     StoreURL    = "https://extremesolutions.xyz",
     DiscordURL  = "https://discord.gg/extreme",
@@ -188,13 +190,25 @@ local function validateKey(key)
     if not ok or not result then
         return false, "Could not reach server.\n(" .. tostring(result) .. ")"
     end
-    if result.StatusCode and result.StatusCode ~= 200 then
-        return false, "Server error " .. tostring(result.StatusCode)
-    end
-
     local parsed, data = pcall(function()
         return HttpService:JSONDecode(result.Body)
     end)
+
+    local statusCode = tonumber(result.StatusCode)
+    if statusCode and statusCode ~= 200 then
+        local serverMessage = parsed and type(data) == "table"
+            and (data.message or data.error)
+
+        if statusCode == 404 and serverMessage == "Application not found" then
+            return false, "Key server offline (Railway app not found)."
+        end
+
+        if serverMessage then
+            return false, "Server error " .. tostring(statusCode) .. ": " .. tostring(serverMessage)
+        end
+        return false, "Server error " .. tostring(statusCode)
+    end
+
     if not parsed then
         return false, "Bad server response."
     end
