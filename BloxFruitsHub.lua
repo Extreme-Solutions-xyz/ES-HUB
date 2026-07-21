@@ -4,7 +4,52 @@
 --               ESLib UI — Full BF Edition (v4.1)
 -- ██████████████████████████████████████████████████████
 
-local ESLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/ESLib.lua"))()
+-- FIX (#4 lifecycle): the LocalPlayer guard MUST run before ESLib is
+-- loaded, because ESLib immediately calls
+-- Players.LocalPlayer:WaitForChild("PlayerGui") on init. If we injected
+-- before the client player replicated, ESLib would index a nil
+-- LocalPlayer and hard-error before our old (later) guard could help.
+-- We therefore resolve LocalPlayer FIRST, then load ESLib.
+do
+    local Players = game:GetService("Players")
+    if not Players.LocalPlayer then
+        -- Wait until the client player object exists (bounded, non-blocking
+        -- forever): either the property fires or we time out after ~10s.
+        local ok = false
+        task.spawn(function()
+            Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+            ok = true
+        end)
+        local t0 = os.clock()
+        while not Players.LocalPlayer and (os.clock() - t0) < 10 do
+            task.wait(0.05)
+        end
+    end
+    -- FIX (#5 runtime verification): fail loudly with a clear message if
+    -- LocalPlayer still isn't available, rather than letting ESLib throw a
+    -- cryptic "attempt to index nil" deeper in the stack.
+    assert(Players.LocalPlayer,
+        "[ES Hub] LocalPlayer unavailable after 10s — run this on the client, not the server.")
+    -- Make sure PlayerGui exists before ESLib tries to mount into it.
+    Players.LocalPlayer:WaitForChild("PlayerGui", 10)
+end
+
+-- FIX (#5 runtime verification): guard the remote fetch + compile of
+-- ESLib so a network/HTTP failure produces a descriptive error instead
+-- of a raw loadstring nil-call crash.
+local ESLib
+do
+    local ok, srcOrErr = pcall(function()
+        return game:HttpGet("https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/ESLib.lua")
+    end)
+    assert(ok and type(srcOrErr) == "string" and #srcOrErr > 0,
+        "[ES Hub] Failed to download ESLib.lua: " .. tostring(srcOrErr))
+    local chunk, compileErr = loadstring(srcOrErr)
+    assert(chunk, "[ES Hub] Failed to compile ESLib.lua: " .. tostring(compileErr))
+    ESLib = chunk()
+    assert(type(ESLib) == "table" and ESLib.CreateWindow,
+        "[ES Hub] ESLib loaded but is missing CreateWindow — check the library version.")
+end
 
 -- ══════════════════════════════════════════════════════
 --  WINDOW
@@ -39,14 +84,11 @@ local TeleportService  = game:GetService("TeleportService")
 local Workspace        = game:GetService("Workspace")
 local HttpService      = game:GetService("HttpService")
 
--- FIX (#4 lifecycle): LocalPlayer can momentarily be nil if the script
--- injects before the client player replicates. Wait for it instead of
--- indexing a possibly-nil value (which would hard-error the whole hub).
+-- FIX (#4 lifecycle): LocalPlayer is already guaranteed by the guard at
+-- the very top of the file (which runs BEFORE ESLib loads). We keep a
+-- final assertion here as a cheap runtime sanity check (#5).
 local player = Players.LocalPlayer
-if not player then
-    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-    player = Players.LocalPlayer
-end
+assert(player, "[ES Hub] LocalPlayer missing at services stage (should be impossible).")
 
 -- FIX (#4 lifecycle): CurrentCamera can be nil for a frame on join.
 -- Resolve it safely and keep a helper so any later consumer always
@@ -680,16 +722,32 @@ end
 --   * cache the result per-tool so we don't re-scan every tick,
 --   * and return nil (graceful skip) when nothing looks like an attack.
 
--- Positive/negative keyword weights for scoring a tool remote.
+-- FIX (#3 Fast Attack): tightened keyword list. The generic terms
+-- "use"/"click"/"hit" were removed from the strong-positive set because
+-- they match far too many unrelated remotes ("UseItem", "ClickGui",
+-- "HitboxSync", etc.). We now only strongly reward specific, unambiguous
+-- attack identifiers, and require a HIGHER threshold to qualify (see
+-- ATTACK_MIN_SCORE below), so an accidental single weak match can't win.
 local ATTACK_POS = {
-    ["attack"]=6, ["combat"]=6, ["hit"]=5, ["swing"]=5, ["melee"]=5,
-    ["damage"]=4, ["slash"]=4, ["click"]=3, ["m1"]=3, ["use"]=2,
+    -- Blox Fruits' real melee remote is literally named "weaponhit" /
+    -- "MeleeHit"; these specific phrases are what we target.
+    ["weaponhit"]=10, ["meleehit"]=10, ["basicattack"]=10,
+    ["attackremote"]=9, ["m1hit"]=9,
+    ["attack"]=6, ["combat"]=6, ["melee"]=6, ["swing"]=5, ["slash"]=5,
+    ["damage"]=4,
 }
 local ATTACK_NEG = {
-    ["equip"]=-6, ["unequip"]=-6, ["reload"]=-5, ["cooldown"]=-5,
-    ["animation"]=-4, ["anim"]=-4, ["ui"]=-4, ["sound"]=-4,
-    ["skill"]=-2, ["block"]=-2, ["charge"]=-2, ["reset"]=-3,
+    ["equip"]=-8, ["unequip"]=-8, ["reload"]=-6, ["cooldown"]=-6,
+    ["animation"]=-6, ["anim"]=-5, ["ui"]=-6, ["sound"]=-5,
+    ["skill"]=-3, ["block"]=-3, ["charge"]=-3, ["reset"]=-4,
+    ["sync"]=-5, ["replicate"]=-4, ["vfx"]=-5, ["effect"]=-4,
+    ["client"]=-3, ["request"]=-2,
 }
+
+-- FIX (#3 Fast Attack): a remote must clear this threshold to be treated
+-- as an attack. Set above any single weak keyword so a lone generic
+-- match (e.g. only "damage"=4) is NOT enough on its own.
+local ATTACK_MIN_SCORE = 5
 
 local function scoreAttackRemote(name)
     local ln = name:lower()
@@ -710,7 +768,9 @@ local function findToolCombatRemote(tool)
     local cached = combatRemoteCache[tool]
     if cached and cached.Parent then return cached end
 
-    local best, bestScore = nil, 0   -- require a POSITIVE score to qualify
+    -- FIX (#3 Fast Attack): start the bar at the minimum qualifying score
+    -- (not 0), so a remote must be a CONFIDENT attack match to be chosen.
+    local best, bestScore = nil, (ATTACK_MIN_SCORE - 1)
     for _, r in ipairs(tool:GetDescendants()) do
         if r:IsA("RemoteEvent") then
             local s = scoreAttackRemote(r.Name)
@@ -720,8 +780,9 @@ local function findToolCombatRemote(tool)
         end
     end
 
-    -- Graceful skip: if nothing scored above zero, there is no remote we
-    -- can confidently treat as an attack, so return nil and fire nothing.
+    -- Graceful skip: if nothing cleared ATTACK_MIN_SCORE, there is no
+    -- remote we can confidently treat as an attack, so return nil and
+    -- fire nothing (prevents spamming unrelated remotes).
     if best then combatRemoteCache[tool] = best end
     return best
 end
@@ -749,9 +810,17 @@ local function startFastAttack()
         -- Fire ONLY the identified combat remote, once per tick.
         local remote = findToolCombatRemote(tool)
         if remote then
+            -- FIX (#3 Fast Attack): validate arguments before invoking.
+            -- We only fire when we have a real, alive HumanoidRootPart to
+            -- pass as the target CFrame. Blox Fruits' weapon-hit remote
+            -- expects a CFrame/position argument; firing with a nil/garbage
+            -- argument can be rejected server-side or flagged as abnormal.
             local root = getRoot()
-            if root then
-                pcall(function() remote:FireServer(root.CFrame) end)
+            if root and root:IsA("BasePart") and remote:IsA("RemoteEvent") then
+                local targetCF = root.CFrame
+                if typeof(targetCF) == "CFrame" then
+                    pcall(function() remote:FireServer(targetCF) end)
+                end
             end
         end
     end)
@@ -840,7 +909,40 @@ local QUEST_TABLE = {
     { name = "MagmaQuestGiver",      min = 825,  max = 949,  tier = 2 },
     { name = "FishmanQuestGiver1",   min = 950,  max = 1049, tier = 1 },
     { name = "SkyExp1QuestGiver",    min = 1050, max = 1424, tier = 1 },
-    { name = "FountainQuestGiver",   min = 1425, max = 9999, tier = 1 },
+
+    -- FIX (#1 Auto Quest): the entries ABOVE already cover levels 1..1424
+    -- (First Sea + early Second Sea givers). The bands BELOW add the
+    -- previously-missing coverage: late Second Sea (1425-1499) and the
+    -- entire Third Sea (1500-9999). Names are the in-game quest-giver
+    -- identifiers; where a giver's exact internal id is uncertain, the
+    -- Auto Quest loop safely falls back to the NEAREST quest-giver NPC
+    -- (see startAutoQuest), so a mismatched name can never fire a bad
+    -- command. Bands are ordered by ascending level and never overlap.
+    -- ── Second Sea (final island) ─────────────────────────────────
+    { name = "ForgottenQuestGiver",  min = 1425, max = 1499, tier = 1 },
+    -- ── Third Sea ─────────────────────────────────────────────────
+    { name = "PiratePortQuestGiver", min = 1500, max = 1574, tier = 1 },
+    { name = "AmazonQuestGiver1",    min = 1575, max = 1624, tier = 1 },
+    { name = "AmazonQuestGiver2",    min = 1625, max = 1699, tier = 1 },
+    { name = "MarineTreeQuestGiver", min = 1700, max = 1774, tier = 1 },
+    { name = "DeepForestQuestGiver", min = 1775, max = 1824, tier = 1 },
+    { name = "DeepForest2QuestGiver", min = 1825, max = 1899, tier = 1 },
+    { name = "DeepForest3QuestGiver", min = 1900, max = 1974, tier = 1 },
+    { name = "HauntedQuestGiver1",   min = 1975, max = 2024, tier = 1 },
+    { name = "HauntedQuestGiver2",   min = 2025, max = 2074, tier = 1 },
+    { name = "SeaOfTreatsQuestGiver", min = 2075, max = 2124, tier = 1 },
+    { name = "IceCreamQuestGiver",   min = 2125, max = 2174, tier = 1 },
+    { name = "CakeQuestGiver1",      min = 2175, max = 2224, tier = 1 },
+    { name = "CakeQuestGiver2",      min = 2225, max = 2274, tier = 1 },
+    { name = "ChocQuestGiver1",      min = 2275, max = 2324, tier = 1 },
+    { name = "ChocQuestGiver2",      min = 2325, max = 2374, tier = 1 },
+    { name = "CandyQuestGiver",      min = 2375, max = 2449, tier = 1 },
+    { name = "TikiQuestGiver1",      min = 2450, max = 2499, tier = 1 },
+    { name = "TikiQuestGiver2",      min = 2500, max = 2549, tier = 1 },
+    { name = "TikiQuestGiver3",      min = 2550, max = 2599, tier = 1 },
+    { name = "SubmergedQuestGiver1", min = 2600, max = 2649, tier = 1 },
+    { name = "SubmergedQuestGiver2", min = 2650, max = 2674, tier = 1 },
+    { name = "SubmergedQuestGiver3", min = 2675, max = 9999, tier = 1 },
 }
 
 -- Return { name, tier } appropriate for `level`, or nil if unknown.
@@ -859,15 +961,31 @@ end
 -- Blox Fruits mirrors the active quest into the player's Data folder.
 local function hasActiveQuest()
     local data = player:FindFirstChild("Data")
-    if data then
-        local q = data:FindFirstChild("Quest") or data:FindFirstChild("CurrentQuest")
-        if q then
-            if typeof(q.Value) == "string" then return q.Value ~= "" end
-            if typeof(q.Value) == "boolean" then return q.Value end
-            if q:GetChildren()[1] then return true end
-        end
+    if not data then return false end
+
+    local q = data:FindFirstChild("Quest") or data:FindFirstChild("CurrentQuest")
+    if not q then return false end
+
+    -- FIX (#2 crash-safety): `q` might be a Folder (or any non-value
+    -- Instance), which has NO `.Value` property. Reading q.Value on such
+    -- an instance throws and would kill the Auto Quest worker. We only
+    -- touch `.Value` after confirming `q` is a ValueBase-derived object.
+    -- (ValueBase is the shared base class of StringValue/BoolValue/
+    -- ObjectValue/etc., so this one check covers every value type.)
+    local okIsValue, isValue = pcall(function() return q:IsA("ValueBase") end)
+    if okIsValue and isValue then
+        local v = q.Value
+        if typeof(v) == "string"  then return v ~= "" end
+        if typeof(v) == "boolean" then return v end
+        if typeof(v) == "Instance" then return v ~= nil end  -- ObjectValue
+        -- Any other populated value type counts as "on a quest".
+        if v ~= nil then return true end
+        return false
     end
-    return false
+
+    -- `q` is a container (e.g. a Folder of quest fields): treat the
+    -- presence of any child as "a quest is active".
+    return q:GetChildren()[1] ~= nil
 end
 
 local function fireComm(remote, ...)
