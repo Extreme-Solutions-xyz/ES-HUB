@@ -357,8 +357,12 @@ end
 local function flyTo(targetCF, reachedCallback)
     local root = getRoot()
     if not root then
-        if reachedCallback then reachedCallback() end
-        return
+        -- FIX (#3 false "arrived"): if there is no HumanoidRootPart we have
+        -- NOT reached anything, so we must NOT invoke reachedCallback (doing
+        -- so set arrived = true and let the farm loop swing at empty air).
+        -- Abort the flight and return nil; the caller's `arrived` stays false
+        -- and flyConn stays nil (its cleanup already pcall-guards a nil conn).
+        return nil
     end
 
     -- Remove any old BodyVelocity/BodyGyro we left
@@ -1077,19 +1081,36 @@ local function tryStartConfiguredQuest(remote, q)
 
     local ok, response = fireComm(remote, "StartQuest", q.name, q.tier)
 
-    -- Give the server a brief moment to mirror the quest into Data, then
-    -- confirm. A rejected StartQuest either errors (ok == false) or simply
-    -- fails to put us on a quest (hasActiveQuest() stays false). Blox Fruits'
-    -- CommF_ can also return false / an error string on a bad giver name.
-    task.wait(0.35)
-    local rejected =
+    -- FIX (#1 slow-replication false blacklist): a single 0.35s wait was too
+    -- short. On a laggy server the quest can be ACCEPTED server-side while
+    -- the mirror into player.Data hasn't replicated yet, so hasActiveQuest()
+    -- briefly reads false and we would permanently blacklist a VALID id.
+    -- Instead we POLL for up to QUEST_CONFIRM_TIMEOUT seconds and accept the
+    -- moment the quest appears. We only treat it as rejected if either:
+    --   (a) the call itself errored / CommF_ explicitly returned false
+    --       (a hard, immediate rejection that will never replicate), OR
+    --   (b) the quest never replicated within the full timeout window.
+    local hardReject =
         (not ok)
         or (type(response) == "boolean" and response == false)
-        or (not hasActiveQuest())
 
-    if rejected then
-        -- Remember it so we stop hammering the same bad id, and surface it
-        -- once for review instead of looping silently forever.
+    local confirmed = false
+    if not hardReject then
+        local QUEST_CONFIRM_TIMEOUT = 3.0   -- generous headroom for slow servers
+        local deadline = os.clock() + QUEST_CONFIRM_TIMEOUT
+        repeat
+            if hasActiveQuest() then
+                confirmed = true
+                break
+            end
+            task.wait(0.15)
+        until os.clock() >= deadline
+    end
+
+    if hardReject or not confirmed then
+        -- Only blacklist on a hard rejection OR a full-timeout no-show. A
+        -- transient slow replication that lands before the deadline is
+        -- accepted above and never reaches here, so valid ids survive.
         badQuestIds[key] = true
         if not loggedBadQuestIds[key] then
             loggedBadQuestIds[key] = true
@@ -1100,6 +1121,39 @@ local function tryStartConfiguredQuest(remote, q)
         return false
     end
     return true
+end
+
+-- FIX (#2 unverified fallback / infinite loop): the nearest-giver fallback
+-- previously fired StartQuest and ignored the result, so an invalid NPC
+-- name or tier retried forever with no exit. We now VERIFY the fallback the
+-- same way we verify a configured id, and bound how many consecutive whole
+-- cycles may fail before Auto Quest pauses itself.
+local AUTO_QUEST_MAX_FAILS = 5   -- consecutive failed cycles before we stop
+local autoQuestFails = 0
+-- Forward-declared so the worker can flip the UI toggle off when it
+-- self-pauses; assigned where the Auto Quest toggle is created below.
+local autoQuestToggle = nil
+
+-- Try the physically-nearest quest-giver, tier 1, and confirm it took.
+-- Returns true only if the server accepted it (quest now active).
+local function tryStartNearestGiver(remote, root)
+    local npc = nearestQuestGiver(root)
+    if not npc then return false end
+
+    -- Capture and validate the result instead of firing blind.
+    local ok, response = fireComm(remote, "StartQuest", npc.Name, 1)
+    local hardReject =
+        (not ok)
+        or (type(response) == "boolean" and response == false)
+    if hardReject then return false end
+
+    -- Poll briefly for replication (same rationale as the configured path).
+    local deadline = os.clock() + 3.0
+    repeat
+        if hasActiveQuest() then return true end
+        task.wait(0.15)
+    until os.clock() >= deadline
+    return false
 end
 
 local function startAutoQuest()
@@ -1132,12 +1186,37 @@ local function startAutoQuest()
                     end
 
                     if not started then
-                        -- Fallback: physically nearest quest-giver NPC, tier 1.
-                        -- Its name comes straight from the world so it is
-                        -- always a valid giver id for wherever we are standing.
-                        local npc = nearestQuestGiver(root)
-                        if npc then
-                            fireComm(remote, "StartQuest", npc.Name, 1)
+                        -- FIX (#2 verified fallback): confirm the nearest-giver
+                        -- attempt actually started a quest instead of firing
+                        -- blind. tryStartNearestGiver returns false on a bad
+                        -- name/tier or a no-show, so we can count the failure.
+                        started = tryStartNearestGiver(remote, root)
+                    end
+
+                    -- FIX (#2 infinite-loop guard): track consecutive failed
+                    -- cycles. If neither the configured id nor the fallback
+                    -- can start a quest for AUTO_QUEST_MAX_FAILS cycles in a
+                    -- row, pause Auto Quest so we don't spin forever on a map
+                    -- with no reachable giver / a broken remote.
+                    if started then
+                        autoQuestFails = 0
+                    else
+                        autoQuestFails = autoQuestFails + 1
+                        if autoQuestFails >= AUTO_QUEST_MAX_FAILS then
+                            autoQuestFails = 0
+                            S.AutoQuest = false   -- flip the setting off
+                            -- Sync the UI toggle so it visually turns off too
+                            -- (:Set updates visuals WITHOUT re-firing the
+                            -- callback, so this can't recurse into us).
+                            if autoQuestToggle and autoQuestToggle.Set then
+                                pcall(function() autoQuestToggle:Set(false) end)
+                            end
+                            notify("Auto Quest",
+                                "Stopped: no quest could be started after "
+                                .. AUTO_QUEST_MAX_FAILS
+                                .. " attempts. Move nearer a quest giver and re-enable.",
+                                "warning")
+                            break   -- leave the worker loop cleanly
                         end
                     end
                 end
@@ -1876,7 +1955,9 @@ FarmTab:CreateToggle({
 
 FarmTab:CreateSection("Auto Quest")
 
-FarmTab:CreateToggle({
+-- FIX (#2): capture the toggle object so startAutoQuest can visually turn
+-- it off when it self-pauses after too many consecutive failures.
+autoQuestToggle = FarmTab:CreateToggle({
     Name         = "Auto Quest",
     CurrentValue = false,
     Flag         = "AutoQuest",
