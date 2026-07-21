@@ -1,7 +1,7 @@
 -- ██████████████████████████████████████████████████████
 --           Extreme Solutions | Blox Fruits Hub
 --                      By Tzqy
---               ESLib UI — Full BF Edition (v4)
+--               ESLib UI — Full BF Edition (v4.1)
 -- ██████████████████████████████████████████████████████
 
 local ESLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/Extreme-Solutions-xyz/ES-HUB/main/ESLib.lua"))()
@@ -120,6 +120,28 @@ S.AntiAFK          = false
 local connections = {}
 local espObjects  = {}
 
+-- Re-execution guard: if the script is run again in the same session,
+-- tear down the previous run's global signal connections so we don't
+-- stack duplicate CharacterAdded / other handlers.
+local GLOBAL_KEY = "_ESHub_BloxFruits_Globals"
+if getgenv then
+    local prev = getgenv()[GLOBAL_KEY]
+    if type(prev) == "table" then
+        for _, conn in pairs(prev) do
+            pcall(function() conn:Disconnect() end)
+        end
+    end
+    getgenv()[GLOBAL_KEY] = {}
+end
+
+-- Register a persistent global connection under the re-exec guard.
+local function registerGlobal(name, conn)
+    if getgenv and type(getgenv()[GLOBAL_KEY]) == "table" then
+        getgenv()[GLOBAL_KEY][name] = conn
+    end
+    return conn
+end
+
 -- Remove markers left behind by an older execution before starting this runtime.
 for _, obj in ipairs(Workspace:GetDescendants()) do
     if obj:IsA("BillboardGui") and obj.Name == "ESHubESP" then
@@ -144,6 +166,33 @@ local function disconnectKey(key)
         pcall(function() connections[key]:Disconnect() end)
         connections[key] = nil
     end
+end
+
+-- Background worker loops (task.spawn) are tracked here, NOT in
+-- `connections`, because a coroutine has no :Disconnect() method.
+-- Each worker also carries a generation token so a stale thread
+-- self-terminates the instant a newer one starts or it is cancelled.
+local taskThreads = {}
+local taskTokens  = {}
+
+local function cancelTask(key)
+    -- Bump the token first so any in-flight loop iteration bails out,
+    -- then cancel the coroutine itself.
+    taskTokens[key] = (taskTokens[key] or 0) + 1
+    if taskThreads[key] then
+        pcall(task.cancel, taskThreads[key])
+        taskThreads[key] = nil
+    end
+end
+
+local function startTask(key, fn)
+    cancelTask(key)
+    local token = taskTokens[key]
+    taskThreads[key] = task.spawn(function()
+        fn(function() return taskTokens[key] == token end)
+        -- Clear our own handle if we exit naturally and are still current.
+        if taskTokens[key] == token then taskThreads[key] = nil end
+    end)
 end
 
 local loadingConfiguration = false
@@ -536,20 +585,39 @@ end
 --  damage path is identical; only the targeting is broader.
 -- ──────────────────────────────────────────────────────────
 
+local KILL_AURA_INTERVAL = 0.15   -- seconds between attack ticks
+local KILL_AURA_MAX_TARGETS = 6   -- cap targets processed per tick
+
 local function startKillAura()
     disconnectKey("killAura")
-    connections["killAura"] = RunService.Heartbeat:Connect(function()
+    local acc = 0
+    connections["killAura"] = RunService.Heartbeat:Connect(function(dt)
         if not S.KillAura then return end
+        -- Throttle: only do work a few times a second, not every frame.
+        acc = acc + dt
+        if acc < KILL_AURA_INTERVAL then return end
+        acc = 0
+
         local myRoot = getRoot()
         if not myRoot then return end
         rebuildEnemyCache()
+
+        -- Gather in-range living enemies, nearest first, then process a
+        -- bounded batch so a crowded area can't stall the client.
+        local inRange = {}
         for _, entry in ipairs(enemyCache) do
             if entry.hum and entry.hum.Health > 0 and entry.root and entry.root.Parent then
                 local dist = (myRoot.Position - entry.root.Position).Magnitude
                 if dist <= S.KillAuraRange then
-                    pcall(attackEnemy, entry.model, entry.root)
+                    inRange[#inRange + 1] = { entry = entry, dist = dist }
                 end
             end
+        end
+        table.sort(inRange, function(a, b) return a.dist < b.dist end)
+
+        for i = 1, math.min(#inRange, KILL_AURA_MAX_TARGETS) do
+            local e = inRange[i].entry
+            pcall(attackEnemy, e.model, e.root)
         end
     end)
 end
@@ -562,10 +630,37 @@ end
 --  guarded, degrades to a no-op if no tool is equipped.
 -- ──────────────────────────────────────────────────────────
 
+-- Locate the single most likely "attack" RemoteEvent on a tool once,
+-- rather than blindly firing every remote inside it every frame.
+local function findToolCombatRemote(tool)
+    -- Prefer a remote whose name hints at combat/attack/hit.
+    for _, r in ipairs(tool:GetDescendants()) do
+        if r:IsA("RemoteEvent") then
+            local ln = r.Name:lower()
+            if ln:find("attack") or ln:find("hit") or ln:find("combat")
+            or ln:find("swing") or ln:find("damage") then
+                return r
+            end
+        end
+    end
+    -- Fall back to the first RemoteEvent found anywhere in the tool.
+    for _, r in ipairs(tool:GetDescendants()) do
+        if r:IsA("RemoteEvent") then return r end
+    end
+    return nil
+end
+
+local FAST_ATTACK_INTERVAL = 0.07   -- ~14 attacks/sec, not every frame
+
 local function startFastAttack()
     disconnectKey("fastAttack")
-    connections["fastAttack"] = RunService.Heartbeat:Connect(function()
+    local acc = 0
+    connections["fastAttack"] = RunService.Heartbeat:Connect(function(dt)
         if not S.FastAttack then return end
+        acc = acc + dt
+        if acc < FAST_ATTACK_INTERVAL then return end
+        acc = 0
+
         local char = getChar(); if not char then return end
         local tool = char:FindFirstChildOfClass("Tool")
         if not tool then
@@ -573,14 +668,14 @@ local function startFastAttack()
             if tool then tool.Parent = char; task.wait(0.02) end
         end
         if not tool then return end
+
         pcall(function() tool:Activate() end)
-        -- Fire every combat-related RemoteEvent on the tool
-        for _, r in ipairs(tool:GetDescendants()) do
-            if r:IsA("RemoteEvent") then
-                local root = getRoot()
-                if root then
-                    pcall(function() r:FireServer(root.CFrame) end)
-                end
+        -- Fire ONLY the identified combat remote, once per tick.
+        local remote = findToolCombatRemote(tool)
+        if remote then
+            local root = getRoot()
+            if root then
+                pcall(function() remote:FireServer(root.CFrame) end)
             end
         end
     end)
@@ -595,60 +690,83 @@ end
 --  layout changes in a future update.
 -- ──────────────────────────────────────────────────────────
 
--- Common Blox Fruits quest remote paths (kept broad + guarded).
-local function findQuestRemotes()
-    local remotes = {}
+-- Blox Fruits routes almost every gameplay request through a single
+-- RemoteFunction named "CommF_" (occasionally a RemoteEvent "CommE_").
+-- We resolve THAT specific handler rather than firing a shotgun of
+-- guessed remotes. Returns the handler + whether it is a function.
+local questCommCache = nil
+
+local function getCommRemote()
+    if questCommCache and questCommCache.Parent then return questCommCache end
+    questCommCache = nil
     local RS = game:GetService("ReplicatedStorage")
-    -- Try a few well-known locations for quest / dialog remotes.
-    local candidates = {
-        "Remotes",
-        "CommF_",
-        "Server",
-        "Quests",
-    }
-    for _, name in ipairs(candidates) do
-        local folder = RS:FindFirstChild(name)
-        if folder and folder:IsA("Instance") then
-            for _, r in ipairs(folder:GetDescendants()) do
-                if r:IsA("RemoteEvent") then
-                    local ln = r.Name:lower()
-                    if ln:find("quest") or ln:find("dialog") or ln:find("request")
-                    or ln:find("start") or ln:find("progress") then
-                        table.insert(remotes, r)
-                    end
+    -- Preferred exact names, then a guarded fallback search.
+    for _, nm in ipairs({ "CommF_", "CommE_", "CommF", "Comm" }) do
+        local obj = RS:FindFirstChild(nm, true)
+        if obj and (obj:IsA("RemoteFunction") or obj:IsA("RemoteEvent")) then
+            questCommCache = obj
+            return obj
+        end
+    end
+    return nil
+end
+
+-- Known safe CommF_ commands used to progress the standard quest loop.
+-- InvokeServer for RemoteFunctions, FireServer for RemoteEvents.
+local QUEST_COMMANDS = { "StartQuest", "AbandonQuest" }
+
+local function fireComm(remote, ...)
+    if not remote then return end
+    local args = table.pack(...)
+    if remote:IsA("RemoteFunction") then
+        pcall(function() remote:InvokeServer(table.unpack(args, 1, args.n)) end)
+    elseif remote:IsA("RemoteEvent") then
+        pcall(function() remote:FireServer(table.unpack(args, 1, args.n)) end)
+    end
+end
+
+-- Find the quest-giver NPC nearest the player so we can pass a valid
+-- quest name/level to StartQuest, instead of firing blind arguments.
+local function nearestQuestGiver(root)
+    local questFolder = Workspace:FindFirstChild("_WorldOrigin")
+        and Workspace._WorldOrigin:FindFirstChild("Quest")
+    local best, bestDist
+    if questFolder then
+        for _, npc in ipairs(questFolder:GetChildren()) do
+            local part = npc:FindFirstChild("HumanoidRootPart")
+                or npc:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local d = (root.Position - part.Position).Magnitude
+                if not bestDist or d < bestDist then
+                    best, bestDist = npc, d
                 end
             end
         end
     end
-    -- Also scan Workspace for NPC-bound dialog remotes.
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("RemoteEvent") then
-            local ln = obj.Name:lower()
-            if ln:find("quest") or ln:find("dialog") then
-                table.insert(remotes, obj)
-            end
-        end
-        if #remotes > 30 then break end
-    end
-    return remotes
+    return best, bestDist
 end
 
 local function startAutoQuest()
-    disconnectKey("autoQuest")
-    connections["autoQuest"] = task.spawn(function()
-        while S.AutoQuest do
+    startTask("autoQuest", function(isCurrent)
+        while S.AutoQuest and isCurrent() do
             local root = getRoot()
-            if root then
-                local remotes = findQuestRemotes()
-                if #remotes > 0 then
-                    for _, r in ipairs(remotes) do
-                        pcall(function() r:FireServer() end)
-                        pcall(function() r:FireServer("Start") end)
-                        pcall(function() r:FireServer("Progress") end)
+            local remote = getCommRemote()
+            if root and remote then
+                -- If a quest-giver is close, try to start its quest by name.
+                local npc = nearestQuestGiver(root)
+                if npc then
+                    -- Blox Fruits StartQuest expects (questName, tier).
+                    for tier = 1, 3 do
+                        fireComm(remote, "StartQuest", npc.Name, tier)
+                    end
+                else
+                    -- No giver nearby: nudge the generic commands, guarded.
+                    for _, cmd in ipairs(QUEST_COMMANDS) do
+                        fireComm(remote, cmd)
                     end
                 end
             end
-            task.wait(math.max(0.5, S.AutoQuestDelay or 2))
+            task.wait(math.max(1, S.AutoQuestDelay or 2))
         end
     end)
 end
@@ -677,9 +795,8 @@ local function fruitRarityScore(name)
 end
 
 local function startFruitSniper()
-    disconnectKey("fruitSniper")
-    connections["fruitSniper"] = task.spawn(function()
-        while S.FruitSniper do
+    startTask("fruitSniper", function(isCurrent)
+        while S.FruitSniper and isCurrent() do
             local root = getRoot()
             if root then
                 local best, bestScore, bestPart, bestDist
@@ -1385,7 +1502,7 @@ FarmTab:CreateToggle({
             startAutoQuest()
             notify("Auto Quest", "Accepting & turning in quests automatically.", "success")
         else
-            disconnectKey("autoQuest")
+            cancelTask("autoQuest")
             notify("Auto Quest", "Disabled.")
         end
     end
@@ -1972,7 +2089,7 @@ FruitTab:CreateToggle({
             startFruitSniper()
             notify("Fruit Sniper", "Sniping nearest wild fruit (rare first).", "success")
         else
-            disconnectKey("fruitSniper")
+            cancelTask("fruitSniper")
             notify("Fruit Sniper", "Disabled.")
         end
     end
@@ -2338,7 +2455,7 @@ MiscTab:CreateParagraph({
 --  RESPAWN HANDLER
 -- ══════════════════════════════════════════════════════
 
-player.CharacterAdded:Connect(function(char)
+registerGlobal("characterAdded", player.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     local h = char:WaitForChild("Humanoid", 5)
     if h then
@@ -2363,7 +2480,7 @@ player.CharacterAdded:Connect(function(char)
     if S.FruitSniper then startFruitSniper() end
     if S.FreeFly then startFreeFly() end
     invalidateCache()
-end)
+end))
 
 if player.Character then
     local h = getHum()
