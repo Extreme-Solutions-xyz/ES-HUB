@@ -25,6 +25,33 @@ local TextService  = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
+local connectionEnvironment = getgenv and getgenv() or _G
+local CONNECTION_KEY = "_ESLib_GlobalConnections"
+local previousConnections = connectionEnvironment[CONNECTION_KEY]
+if type(previousConnections) == "table" then
+    for _, conn in ipairs(previousConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+end
+
+local trackedConnections = {}
+connectionEnvironment[CONNECTION_KEY] = trackedConnections
+
+local function trackConnection(conn)
+    trackedConnections[#trackedConnections + 1] = conn
+    return conn
+end
+
+local function disconnectTrackedConnections()
+    for _, conn in ipairs(trackedConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    table.clear(trackedConnections)
+    if connectionEnvironment[CONNECTION_KEY] == trackedConnections then
+        connectionEnvironment[CONNECTION_KEY] = nil
+    end
+end
+
 -- ══════════════════════════════════════════════════════
 --  THEME  (ES Green)
 -- ══════════════════════════════════════════════════════
@@ -373,6 +400,11 @@ end
 
 function ESLib:CreateWindow(config)
     config = config or {}
+
+    -- A module instance may be reused to create another window. Tear down
+    -- global input listeners from its previous window before rebuilding.
+    if #trackedConnections > 0 then disconnectTrackedConnections() end
+    connectionEnvironment[CONNECTION_KEY] = trackedConnections
 
     -- ── ScreenGui ────────────────────────────────────
     local previousWindowGui = PlayerGui:FindFirstChild("ESHub")
@@ -785,7 +817,7 @@ function ESLib:CreateWindow(config)
         header.InputBegan:Connect(onDragBegan)
         sidebar.InputBegan:Connect(onDragBegan)
 
-        UIS.InputChanged:Connect(function(input)
+        trackConnection(UIS.InputChanged:Connect(function(input)
             local isMouseMove = dragType == Enum.UserInputType.MouseButton1
                 and input.UserInputType == Enum.UserInputType.MouseMovement
             local isTouchMove = dragType == Enum.UserInputType.Touch and input == dragPointer
@@ -803,7 +835,7 @@ function ESLib:CreateWindow(config)
                 innerGlow.Position     = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
                 borderOverlay.Position = UDim2.new(startWin.X.Scale,    newX,     startWin.Y.Scale,    newY)
             end
-        end)
+        end))
     end
 
     -- The launcher distinguishes a click from a drag, so repositioning never opens it.
@@ -832,7 +864,7 @@ function ESLib:CreateWindow(config)
             end)
         end)
 
-        UIS.InputChanged:Connect(function(input)
+        trackConnection(UIS.InputChanged:Connect(function(input)
             local isMouseMove = dragType == Enum.UserInputType.MouseButton1
                 and input.UserInputType == Enum.UserInputType.MouseMovement
             local isTouchMove = dragType == Enum.UserInputType.Touch and input == dragPointer
@@ -847,7 +879,7 @@ function ESLib:CreateWindow(config)
                 startPosition.Y.Offset + delta.Y
             )
             launcherGroup.Position = UDim2.fromOffset(x, y)
-        end)
+        end))
     end
 
     -- Minimize / Close
@@ -863,6 +895,7 @@ function ESLib:CreateWindow(config)
         tw(innerGlowStroke, { Transparency = 1 }, 0.25)
         tw(borderStroke,  { Transparency = 1 }, 0.25)
         task.wait(0.3)
+        disconnectTrackedConnections()
         gui:Destroy()
         notifGui:Destroy()
     end)
@@ -870,7 +903,7 @@ function ESLib:CreateWindow(config)
     -- ── Keybind toggle ────────────────────────────────
     if config.ToggleUIKeybind then
         local keyStr = config.ToggleUIKeybind:upper()
-        UIS.InputBegan:Connect(function(input, gameProcessed)
+        trackConnection(UIS.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed then return end
             local k = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
             if k == keyStr then
@@ -880,7 +913,7 @@ function ESLib:CreateWindow(config)
                     setMainVisible(not win.Visible)
                 end
             end
-        end)
+        end))
     end
 
     -- ── Entrance animation ────────────────────────────
@@ -1268,14 +1301,14 @@ function ESLib:CreateWindow(config)
                     updateFromInput(input)
                 end
             end)
-            UIS.InputEnded:Connect(function(input)
+            trackConnection(UIS.InputEnded:Connect(function(input)
                 if draggingSl and input.UserInputType == dragInputType then
                     draggingSl = false
                     dragInputType = nil
                     if cfg.FinishedCallback then cfg.FinishedCallback(val) end
                 end
-            end)
-            UIS.InputChanged:Connect(function(input)
+            end))
+            trackConnection(UIS.InputChanged:Connect(function(input)
                 local inputType = input.UserInputType
                 local isMouseMove = dragInputType == Enum.UserInputType.MouseButton1
                     and inputType == Enum.UserInputType.MouseMovement
@@ -1284,7 +1317,7 @@ function ESLib:CreateWindow(config)
                 if draggingSl and (isMouseMove or isTouchMove) then
                     updateFromInput(input)
                 end
-            end)
+            end))
 
             function sliderObj:Set(v) setVal(v, false) end
             if cfg.Flag then flagCbs[cfg.Flag] = function(v) setVal(v, true) end end
@@ -1552,7 +1585,7 @@ function ESLib:CreateWindow(config)
 
                 -- Close on outside click
                 if outsideConn then outsideConn:Disconnect() end
-                outsideConn = UIS.InputBegan:Connect(function(input)
+                outsideConn = trackConnection(UIS.InputBegan:Connect(function(input)
                     if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
                     task.wait()
                     if not dropFrame or not dropFrame:IsDescendantOf(game) then
@@ -1566,7 +1599,7 @@ function ESLib:CreateWindow(config)
                         closeDD()
                         outsideConn:Disconnect()
                     end
-                end)
+                end))
             end
 
             c.MouseEnter:Connect(function() tw(c, { BackgroundColor3 = T.cardHov }, 0.12) end)
@@ -1712,7 +1745,7 @@ function ESLib:CreateWindow(config)
                 tw(dropFrame, { Size = UDim2.new(0,as.X,0,totalH) }, 0.2)
 
                 if outsideConn then outsideConn:Disconnect() end
-                outsideConn = UIS.InputBegan:Connect(function(input)
+                outsideConn = trackConnection(UIS.InputBegan:Connect(function(input)
                     if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
                     task.wait()
                     if not dropFrame or not dropFrame:IsDescendantOf(game) then
@@ -1723,7 +1756,7 @@ function ESLib:CreateWindow(config)
                     if not (mp.X >= da.X and mp.X <= da.X+ds.X and mp.Y >= da.Y and mp.Y <= da.Y+ds.Y) then
                         closeM(); outsideConn:Disconnect()
                     end
-                end)
+                end))
             end
 
             c.MouseEnter:Connect(function() tw(c, { BackgroundColor3 = T.cardHov }, 0.12) end)
@@ -1827,7 +1860,7 @@ function ESLib:CreateWindow(config)
                 if listening then return end
                 listening = true; kLbl.Text = "..."; tw(kLbl, { TextColor3 = T.warning }, 0.1)
                 local conn
-                conn = UIS.InputBegan:Connect(function(input)
+                conn = trackConnection(UIS.InputBegan:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.Keyboard then
                         cur         = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
                         kLbl.Text   = cur; tw(kLbl, { TextColor3 = T.accent }, 0.1)
@@ -1835,7 +1868,7 @@ function ESLib:CreateWindow(config)
                         if cfg.Flag then savedValues[cfg.Flag] = cur end
                         if cfg.Callback then cfg.Callback(input.KeyCode) end
                     end
-                end)
+                end))
             end)
 
             local kbObj = {}

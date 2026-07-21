@@ -13,9 +13,9 @@ local CONFIG = {
     APIBaseURL  = "https://extremesolutionskeysystem-production.up.railway.app",
     OfflineKeys = {},
     OfflineMode = {
-        Enabled = true,
-        Key = "ES-OFFLINE-DEV",
-        Message = "Railway offline: development key accepted.",
+        Enabled = false,
+        Key = "",
+        Message = "Offline validation is disabled.",
     },
     StoreURL    = "https://extremesolutions.xyz",
     DiscordURL  = "https://discord.gg/extreme",
@@ -48,6 +48,33 @@ local UserInputService = game:GetService("UserInputService")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera    = game:GetService("Workspace").CurrentCamera
+
+local loaderEnvironment = getgenv and getgenv() or _G
+local LOADER_CONNECTION_KEY = "_ESHub_LoaderConnections"
+local previousLoaderConnections = loaderEnvironment[LOADER_CONNECTION_KEY]
+if type(previousLoaderConnections) == "table" then
+    for _, conn in ipairs(previousLoaderConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+end
+
+local loaderConnections = {}
+loaderEnvironment[LOADER_CONNECTION_KEY] = loaderConnections
+
+local function trackLoaderConnection(conn)
+    loaderConnections[#loaderConnections + 1] = conn
+    return conn
+end
+
+local function disconnectLoaderConnections()
+    for _, conn in ipairs(loaderConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    table.clear(loaderConnections)
+    if loaderEnvironment[LOADER_CONNECTION_KEY] == loaderConnections then
+        loaderEnvironment[LOADER_CONNECTION_KEY] = nil
+    end
+end
 
 
 -- ══════════════════════════════════════════════════════
@@ -329,6 +356,10 @@ screenGui.ResetOnSpawn   = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder   = 100
+
+local previousScreenGui = playerGui:FindFirstChild(screenGui.Name)
+if previousScreenGui then previousScreenGui:Destroy() end
+
 screenGui.Parent         = playerGui
 
 local PANEL_RADIUS = sc(16)
@@ -528,6 +559,7 @@ closeBtn.MouseButton1Click:Connect(function()
     fadeWindowChrome(0.3)
     tw(overlay, { BackgroundTransparency = 1 }, 0.35)
     task.wait(0.4)
+    disconnectLoaderConnections()
     screenGui:Destroy()
 end)
 
@@ -760,7 +792,7 @@ panel.InputChanged:Connect(function(input)
     end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
+trackLoaderConnection(UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
         local vp    = camera.ViewportSize
@@ -783,7 +815,7 @@ UserInputService.InputChanged:Connect(function(input)
             Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
         }):Play()
     end
-end)
+end))
 
 
 -- ══════════════════════════════════════════════════════
@@ -868,6 +900,7 @@ local function onValidate()
 
     task.spawn(function()
         local valid, message = validateKey(key)
+        if not screenGui.Parent then return end
 
         if valid then
             saveKey(key)
@@ -876,16 +909,22 @@ local function onValidate()
             validateBtn.Text = "Loading..."
             validateBtn.BackgroundColor3 = C.success
 
-            task.wait(0.8)
-            fadeAll(panel, 0.35)
-            fadeWindowChrome(0.35)
-            tw(overlay, { BackgroundTransparency = 1 }, 0.4)
-            task.wait(0.5)
-            screenGui:Destroy()
-
             local loaded, loadErr = loadGameScript(detectedScriptURL, detectedGameName)
-            if not loaded then
+            if loaded then
+                task.wait(0.2)
+                fadeAll(panel, 0.35)
+                fadeWindowChrome(0.35)
+                tw(overlay, { BackgroundTransparency = 1 }, 0.4)
+                task.wait(0.5)
+                disconnectLoaderConnections()
+                screenGui:Destroy()
+            else
                 warn("[ES Hub] Script load error: " .. tostring(loadErr))
+                statusLabel.TextColor3 = C.error
+                statusLabel.Text = "Could not load the game script. Please try again."
+                validateBtn.Text = "Retry"
+                validateBtn.BackgroundColor3 = C.accent
+                isValidating = false
             end
         else
             clearSavedKey()

@@ -127,8 +127,14 @@ local GLOBAL_KEY = "_ESHub_BloxFruits_Globals"
 if getgenv then
     local prev = getgenv()[GLOBAL_KEY]
     if type(prev) == "table" then
-        for _, conn in pairs(prev) do
-            pcall(function() conn:Disconnect() end)
+        for _, handle in pairs(prev) do
+            pcall(function()
+                if type(handle) == "function" then
+                    handle()
+                else
+                    handle:Disconnect()
+                end
+            end)
         end
     end
     getgenv()[GLOBAL_KEY] = {}
@@ -168,6 +174,16 @@ local function disconnectKey(key)
     end
 end
 
+-- One cleanup handle owns every feature connection in this runtime. This
+-- catches connections created later as toggles change, without requiring
+-- each toggle to maintain a second global registry entry.
+registerGlobal("featureConnectionsCleanup", function()
+    for _, conn in pairs(connections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    table.clear(connections)
+end)
+
 -- Background worker loops (task.spawn) are tracked here, NOT in
 -- `connections`, because a coroutine has no :Disconnect() method.
 -- Each worker also carries a generation token so a stale thread
@@ -195,6 +211,12 @@ local function startTask(key, fn)
     end)
 end
 
+registerGlobal("workerTasksCleanup", function()
+    local keys = {}
+    for key in pairs(taskThreads) do keys[#keys + 1] = key end
+    for _, key in ipairs(keys) do cancelTask(key) end
+end)
+
 local loadingConfiguration = false
 
 local function notify(title, content, _type)
@@ -219,7 +241,7 @@ local function startSpeedEnforce()
     if speedEnforceConn then
         pcall(function() speedEnforceConn:Disconnect() end)
     end
-    speedEnforceConn = RunService.Heartbeat:Connect(function()
+    speedEnforceConn = registerGlobal("speedEnforce", RunService.Heartbeat:Connect(function()
         local h = getHum()
         if not h then return end
         -- Only write when mismatched to avoid unnecessary sets
@@ -229,7 +251,7 @@ local function startSpeedEnforce()
         if h.JumpPower ~= S.JumpValue then
             h.JumpPower = S.JumpValue
         end
-    end)
+    end))
 end
 
 startSpeedEnforce()
